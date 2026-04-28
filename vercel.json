@@ -1,0 +1,6 @@
+{
+  "rewrites": [{ "source": "/api/(.*)", "destination": "/api" }],
+  "renders": [
+    { "src": "server/_core/index.ts", "use": "@vercel/node" }
+  ]
+}
