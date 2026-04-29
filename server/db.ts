@@ -84,8 +84,10 @@ export async function createDeclaration(data: InsertDeclaration) {
 }
 
 export async function updateDeclaration(id: number, data: Partial<InsertDeclaration>) {
-  const db = await db.update(declarations).set(data).where(eq(declarations.id, id)).returning();
-  return db[0];
+  const db = await getDb();
+  if (!db) throw new Error('Database not available');
+  const result = await db.update(declarations).set(data).where(eq(declarations.id, id)).returning();
+  return result[0];
 }
 
 export async function deleteDeclaration(id: number) {
