@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Upload, AlertCircle, CheckCircle2, Loader2 } from 'lucide-react';
+import { Upload, Download, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
 import * as XLSX from 'xlsx';
@@ -12,348 +12,197 @@ interface ImportResult {
   errors: string[];
 }
 
+const normalizeName = (name: string) => {
+  if (!name) return '';
+  return name.toLowerCase().split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+};
+
+const parseValorBRL = (raw: any): number => {
+  if (raw === null || raw === undefined) return 0;
+  const str = raw.toString().replace(/R\$\s*/g, '').replace(/\./g, '').replace(',', '.').trim();
+  const num = parseFloat(str);
+  return isNaN(num) ? 0 : Math.round(num * 100);
+};
+
 export default function ImportPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
-  const importMutation = trpc.import.importExcel.useMutation();
 
-  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+  const importMutation = trpc.importData.importExcel.useMutation();
+  const exportQuery = trpc.declarations.exportToExcel.useQuery(undefined, { enabled: false });
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-
-    setIsLoading(true);
-    setResult(null);
+    setIsImporting(true); setResult(null);
 
     try {
-<<<<<<< HEAD
       const arrayBuffer = await file.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
       const declarations: any[] = [];
       const collaborators = new Set<string>();
 
-=======
-      // Ler arquivo Excel
-      const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-
-      // Extrair dados das abas
-      const declarations: any[] = [];
-      const collaborators = new Set<string>();
-
-      // Processar abas de meses
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-      ['Março', 'Abril', 'Maio'].forEach(month => {
+      (['Março', 'Abril', 'Maio'] as const).forEach(month => {
         const sheet = workbook.Sheets[month];
-        if (sheet) {
-          const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[];
-<<<<<<< HEAD
-
-          let headerRowIndex = -1;
-          let headerRow: any[] | null = null;
-
-=======
-          
-          // Encontrar a linha de cabeçalho automaticamente
-          let headerRowIndex = -1;
-          let headerRow: any[] | null = null;
-          
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-          for (let i = 0; i < Math.min(5, data.length); i++) {
-            const row = data[i];
-            if (row && row.some((cell: any) => cell?.toString().toLowerCase().includes('colaborador'))) {
-              headerRowIndex = i;
-              headerRow = row;
-              break;
-            }
-          }
-<<<<<<< HEAD
-
-          if (headerRow && headerRowIndex >= 0) {
-            const colIndices = {
-              colaborador: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('colaborador')),
-              cpf: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('cpf')),
-              cliente: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'cliente'),
-              valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor') && h?.toString().toLowerCase().includes('recebido')),
-              tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'tipo'),
-=======
-          
-          if (headerRow && headerRowIndex >= 0) {
-            // Mapear índices das colunas
-            const colIndices = {
-              colaborador: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('colaborador')),
-              cpf: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('cpf')),
-              cliente: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('cliente') && !h?.toString().toLowerCase().includes('tipo')),
-              valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor') && h?.toString().toLowerCase().includes('recebido')),
-              tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('tipo')),
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-              comissao: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('comiss')),
-              status: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('status')),
-            };
-
-<<<<<<< HEAD
-=======
-            // Processar linhas de dados (começa após o cabeçalho)
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-            for (let i = headerRowIndex + 1; i < data.length; i++) {
-              const row = data[i];
-              if (!row || !row[colIndices.colaborador]) break;
-
-<<<<<<< HEAD
-              const normalizeName = (name: string) => {
-                if (!name) return '';
-                return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
-=======
-              // Função para normalizar nomes (primeira letra maiúscula, resto minúsculo)
-              const normalizeName = (name: string) => {
-                if (!name) return '';
-                return name
-                  .toLowerCase()
-                  .split(' ')
-                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                  .join(' ');
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-              };
-
-              const colaborador = row[colIndices.colaborador]?.toString().trim();
-              const cpfCliente = row[colIndices.cpf]?.toString().trim() || '';
-              const clienteRaw = row[colIndices.cliente]?.toString().trim() || '';
-              const cliente = normalizeName(clienteRaw);
-<<<<<<< HEAD
-
-              const valorRaw = row[colIndices.valor]?.toString() || '0';
-              const valorCleaned = valorRaw.replace(/R\$\s*/g, '').replace(/\./g, '').replace(',', '.').trim();
-              const valorRecebido = parseFloat(valorCleaned) || 0;
-
-=======
-              const valorRecebido = parseFloat(row[colIndices.valor]?.toString() || '0');
-              
-              // Normalizar clienteType
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-              let clienteTypeRaw = row[colIndices.tipo]?.toString().trim() || 'Diversos';
-              let clienteType = 'Diversos';
-              if (clienteTypeRaw.toLowerCase().includes('sócio') || clienteTypeRaw.toLowerCase().includes('socio')) {
-                clienteType = 'Sócio';
-              }
-<<<<<<< HEAD
-
-=======
-              
-              // Normalizar statusPagamento
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-              let statusPagamentoRaw = row[colIndices.status]?.toString().trim() || 'AGUARDANDO';
-              let statusPagamento = 'AGUARDANDO';
-              if (statusPagamentoRaw.toUpperCase().includes('PAGO')) {
-                statusPagamento = 'PAGO';
-              } else if (statusPagamentoRaw.toUpperCase().includes('DOAÇÃO') || statusPagamentoRaw.toUpperCase().includes('DOACAO')) {
-                statusPagamento = 'DOAÇÃO';
-              }
-
-              if (colaborador && cliente) {
-<<<<<<< HEAD
-                const valorEmCentavos = Math.round(valorRecebido * 100);
-=======
-                // Converter valor para centavos
-                const valorEmCentavos = Math.round(valorRecebido * 100);
-
-                // NÃO enviar comissão - será calculada automaticamente no servidor
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-                declarations.push({
-                  month,
-                  collaborator: colaborador,
-                  cpfCliente,
-                  cliente,
-                  valorRecebido: valorEmCentavos,
-                  clienteType,
-                  statusPagamento: ['PAGO', 'AGUARDANDO', 'DOAÇÃO'].includes(statusPagamento) ? statusPagamento : 'AGUARDANDO',
-                });
-<<<<<<< HEAD
-=======
-
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-                collaborators.add(colaborador);
-              }
-            }
+        if (!sheet) return;
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+        let headerRowIndex = -1, headerRow: any[] | null = null;
+        for (let i = 0; i < Math.min(5, data.length); i++) {
+          if (data[i]?.some((c: any) => c?.toString().toLowerCase().includes('colaborador'))) {
+            headerRowIndex = i; headerRow = data[i]; break;
           }
         }
-      });
-
-<<<<<<< HEAD
-=======
-      // Processar aba de Comissões para extrair colaboradores adicionais
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-      const commissionsSheet = workbook.Sheets['Comissoes'];
-      if (commissionsSheet) {
-        const data = XLSX.utils.sheet_to_json(commissionsSheet, { header: 1 }) as any[];
-        for (let i = 2; i < data.length; i++) {
+        if (!headerRow || headerRowIndex < 0) return;
+        const idx = {
+          colaborador: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('colaborador')),
+          cliente: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'cliente'),
+          cpf: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'cpf'),
+          valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor')),
+          tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'tipo'),
+          status: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'status'),
+        };
+        for (let i = headerRowIndex + 1; i < data.length; i++) {
           const row = data[i];
-          if (!row || !row[0]) break;
-          const name = row[0]?.toString().trim();
-          if (name && name !== 'COLABORADOR' && name !== '⚙️  RESUMO TOTAL (MARÇO A MAIO)') {
-            collaborators.add(name);
+          if (!row?.[idx.colaborador]) break;
+          const colaborador = row[idx.colaborador]?.toString().trim();
+          const cliente = normalizeName(row[idx.cliente]?.toString().trim() || '');
+          const cpfCliente = row[idx.cpf] != null ? row[idx.cpf].toString().trim() : '';
+          const valorEmCentavos = parseValorBRL(row[idx.valor]);
+          const tipoRaw = row[idx.tipo]?.toString().trim() || '';
+          const clienteType: 'Sócio' | 'Diversos' = tipoRaw.toLowerCase().includes('sócio') || tipoRaw.toLowerCase().includes('socio') ? 'Sócio' : 'Diversos';
+          const statusRaw = row[idx.status]?.toString().trim().toUpperCase() || 'AGUARDANDO';
+          const statusPagamento: 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' = statusRaw.includes('PAGO') ? 'PAGO' : statusRaw.includes('DOA') ? 'DOAÇÃO' : 'AGUARDANDO';
+          if (colaborador && cliente) {
+            declarations.push({ month, collaborator: colaborador, cpfCliente, cliente, valorRecebido: valorEmCentavos, clienteType, statusPagamento });
+            collaborators.add(colaborador);
           }
+        }
+      });
+
+      const commissionsSheet = workbook.Sheets['Comissões'] || workbook.Sheets['Comissoes'];
+      if (commissionsSheet) {
+        const data = XLSX.utils.sheet_to_json(commissionsSheet, { header: 1 }) as any[][];
+        for (let i = 1; i < data.length; i++) {
+          const name = data[i]?.[0]?.toString().trim();
+          if (name && name !== 'COLABORADOR' && !name.includes('RESUMO')) collaborators.add(name);
         }
       }
 
-<<<<<<< HEAD
-=======
-      // Enviar dados para o servidor
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-      const importResult = await importMutation.mutateAsync({
-        declarations,
-        collaborators: Array.from(collaborators),
-      });
-
-      setResult({
-        declarationsImported: importResult.declarationsImported,
-        collaboratorsImported: importResult.collaboratorsImported,
-        errors: importResult.errors || [],
-      });
-
-      if (importResult.declarationsImported > 0) {
-        toast.success(`✅ ${importResult.declarationsImported} declarações importadas com sucesso!`);
+      if (!declarations.length) {
+        toast.error('Nenhuma declaração encontrada. Verifique as abas da planilha.');
+        setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Nenhuma declaração encontrada'] });
+        return;
       }
-<<<<<<< HEAD
-=======
 
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-      if (importResult.errors && importResult.errors.length > 0) {
-        toast.error(`⚠️ ${importResult.errors.length} erro(s) durante a importação`);
-      }
-    } catch (error) {
-      console.error('Erro ao importar:', error);
-      toast.error('Erro ao processar arquivo Excel');
-      setResult({
-        declarationsImported: 0,
-        collaboratorsImported: 0,
-        errors: ['Erro ao processar arquivo'],
-      });
+      const r = await importMutation.mutateAsync({ declarations, collaborators: Array.from(collaborators) });
+      setResult({ declarationsImported: r.declarationsImported, collaboratorsImported: r.collaboratorsImported, errors: r.errors || [] });
+      if (r.declarationsImported > 0) toast.success(`✅ ${r.declarationsImported} declarações importadas!`);
+      if (r.errors?.length) toast.error(`⚠️ ${r.errors.length} erro(s)`);
+    } catch {
+      toast.error('Erro ao processar arquivo');
+      setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Erro ao processar arquivo'] });
     } finally {
-      setIsLoading(false);
+      setIsImporting(false);
+      const input = document.getElementById('file-input') as HTMLInputElement;
+      if (input) input.value = '';
     }
   };
 
+  const handleExport = async () => {
+    setIsExporting(true);
+    try {
+      const data = await exportQuery.refetch();
+      if (!data.data) { toast.error('Erro ao buscar dados'); return; }
+      const wb = XLSX.utils.book_new();
+      const { declarations, commissions } = data.data;
+      ['Março', 'Abril', 'Maio'].forEach(month => {
+        const rows = (declarations[month as keyof typeof declarations] || []).map((d: any) => ({
+          'Colaborador': d.collaborator, 'Cliente': d.cliente, 'CPF': d.cpfCliente || '',
+          'Valor Recebido': d.valorRecebido / 100, 'Tipo': d.clienteType,
+          'Comissão': d.comissao / 100, 'Status': d.statusPagamento,
+        }));
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), month);
+      });
+      const commRows = (commissions as any[]).map(c => ({
+        'Colaborador': c.collaborator,
+        'Março Qtd': c.marco.quantidade, 'Março Valor': c.marco.valor / 100, 'Março Comissão': c.marco.comissao / 100,
+        'Abril Qtd': c.abril.quantidade, 'Abril Valor': c.abril.valor / 100, 'Abril Comissão': c.abril.comissao / 100,
+        'Maio Qtd': c.maio.quantidade, 'Maio Valor': c.maio.valor / 100, 'Maio Comissão': c.maio.comissao / 100,
+        'Total Qtd': c.total.quantidade, 'Total Valor': c.total.valor / 100, 'Total Comissão': c.total.comissao / 100,
+      }));
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(commRows), 'Comissões');
+      XLSX.writeFile(wb, `Controle_IRPF_${new Date().toISOString().split('T')[0]}.xlsx`);
+      toast.success('Planilha exportada!');
+    } catch { toast.error('Erro ao exportar'); }
+    finally { setIsExporting(false); }
+  };
+
   return (
-    <div className="container mx-auto py-8">
-      <Card>
-        <CardHeader>
-          <CardTitle>Importar Declarações do Excel</CardTitle>
-          <CardDescription>
-            Selecione um arquivo Excel com as declarações de vendas para importar
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-6">
-<<<<<<< HEAD
-=======
-          {/* Upload Area */}
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:bg-accent/50 transition-colors">
-            <input
-              type="file"
-              accept=".xlsx,.xls"
-              onChange={handleFileUpload}
-              disabled={isLoading}
-              className="hidden"
-              id="file-input"
-            />
-            <label htmlFor="file-input" className="cursor-pointer">
-              <Upload className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-lg font-semibold">Clique para selecionar arquivo</p>
-              <p className="text-sm text-muted-foreground">ou arraste um arquivo Excel aqui</p>
-            </label>
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Importar/Exportar</h1>
+        <p className="text-sm text-gray-500 mt-1">Gerencie seus dados através de planilhas Excel</p>
+      </div>
+
+      {/* Info Banner */}
+      <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex gap-3">
+        <Info className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
+        <div>
+          <p className="font-semibold text-green-800">Importante</p>
+          <p className="text-sm text-green-700 mt-0.5">Certifique-se de que sua planilha Excel está no formato correto antes de importar. Ao exportar, todos os dados atuais serão incluídos no arquivo.</p>
+        </div>
+      </div>
+
+      {/* Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {/* Import */}
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-4">
+            <Upload className="w-7 h-7 text-[#1a7a40]" />
           </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Importar Planilha</h2>
+          <p className="text-sm text-gray-500 mb-6">Importe dados de declarações a partir de uma planilha Excel (.xlsx, .xls, .csv)</p>
+          <input type="file" accept=".xlsx,.xls" onChange={handleImport} disabled={isImporting} className="hidden" id="file-input" />
+          <label htmlFor="file-input" className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-colors cursor-pointer w-full justify-center ${isImporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#1a7a40] hover:bg-[#155f32]'}`}>
+            {isImporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Importando...</> : <><Upload className="w-4 h-4" /> Selecionar Arquivo</>}
+          </label>
 
-<<<<<<< HEAD
-=======
-          {/* Loading State */}
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-          {isLoading && (
-            <div className="flex items-center justify-center gap-2 text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" />
-              <span>Processando arquivo...</span>
-            </div>
-          )}
-
-<<<<<<< HEAD
-=======
-          {/* Results */}
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           {result && (
-            <div className="space-y-4">
+            <div className="mt-4 w-full text-left space-y-2">
               {result.declarationsImported > 0 && (
-                <div className="flex items-start gap-3 p-4 bg-green-50 border border-green-200 rounded-lg">
-                  <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-semibold text-green-900">Importação Bem-sucedida!</p>
-<<<<<<< HEAD
-                    <p className="text-sm text-green-800">{result.declarationsImported} declaração(ões) importada(s)</p>
-                    {result.collaboratorsImported > 0 && (
-                      <p className="text-sm text-green-800">{result.collaboratorsImported} colaborador(es) adicionado(s)</p>
-=======
-                    <p className="text-sm text-green-800">
-                      {result.declarationsImported} declaração(ões) importada(s)
-                    </p>
-                    {result.collaboratorsImported > 0 && (
-                      <p className="text-sm text-green-800">
-                        {result.collaboratorsImported} colaborador(es) adicionado(s)
-                      </p>
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-                    )}
-                  </div>
+                <div className="flex items-center gap-2 p-3 bg-green-50 border border-green-200 rounded-lg text-sm text-green-800">
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                  {result.declarationsImported} declaração(ões) importada(s)
+                  {result.collaboratorsImported > 0 && ` • ${result.collaboratorsImported} colaborador(es)`}
                 </div>
               )}
-
-              {result.errors && result.errors.length > 0 && (
-                <div className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-red-600 mt-0.5 flex-shrink-0" />
-                  <div>
-                    <p className="font-semibold text-red-900">Erros na Importação</p>
-                    {result.errors.map((error, idx) => (
-<<<<<<< HEAD
-                      <p key={idx} className="text-sm text-red-800">• {error}</p>
-=======
-                      <p key={idx} className="text-sm text-red-800">
-                        • {error}
-                      </p>
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-                    ))}
-                  </div>
+              {result.errors.length > 0 && (
+                <div className="flex items-start gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>{result.errors.map((err, i) => <p key={i}>• {err}</p>)}</div>
                 </div>
               )}
             </div>
           )}
+        </div>
 
-<<<<<<< HEAD
-=======
-          {/* Info Box */}
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-          <Card className="bg-blue-50 border-blue-200">
-            <CardHeader>
-              <CardTitle className="text-base">Formato esperado do Excel</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2 text-sm">
-              <p>Sua planilha deve conter:</p>
-              <ul className="list-disc list-inside space-y-1 text-muted-foreground">
-                <li><strong>Abas por mês:</strong> Março, Abril, Maio</li>
-<<<<<<< HEAD
-                <li><strong>Colunas necessárias:</strong> Colaborador, CPF, Cliente, Valor Recebido, Tipo, Status</li>
-                <li><strong>Tipo:</strong> "Sócio" ou "Diversos"</li>
-                <li><strong>Status:</strong> "PAGO", "AGUARDANDO" ou "DOAÇÃO"</li>
-=======
-                <li><strong>Colunas necessárias:</strong> Colaborador, CPF Cliente, Cliente, Valor Recebido, Tipo, Comissão, Status</li>
-                <li><strong>Tipo:</strong> "Sócio" ou "Diversos"</li>
-                <li><strong>Status:</strong> "PAGO", "AGUARDANDO" ou "DOAÇÃO"</li>
-                <li><strong>Comissão:</strong> Valor já calculado (não será recalculado)</li>
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-              </ul>
-            </CardContent>
-          </Card>
-        </CardContent>
-      </Card>
+        {/* Export */}
+        <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm flex flex-col items-center text-center">
+          <div className="w-16 h-16 rounded-full bg-green-50 flex items-center justify-center mb-4">
+            <Download className="w-7 h-7 text-[#1a7a40]" />
+          </div>
+          <h2 className="text-xl font-semibold text-gray-900 mb-2">Exportar Planilha</h2>
+          <p className="text-sm text-gray-500 mb-6">Exporte todos os dados de declarações para uma planilha Excel</p>
+          <button
+            onClick={handleExport}
+            disabled={isExporting}
+            className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-colors w-full justify-center ${isExporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#1a7a40] hover:bg-[#155f32]'}`}
+          >
+            {isExporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Exportando...</> : <><Download className="w-4 h-4" /> Exportar Dados</>}
+          </button>
+        </div>
+      </div>
     </div>
   );
-<<<<<<< HEAD
 }
-=======
-}
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4

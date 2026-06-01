@@ -164,14 +164,21 @@ export const appRouter = router({
     total: publicProcedure.query(async () => getTotalCommissions(PUBLIC_USER_ID)),
   }),
 
-  import: router({
+  importData: router({
     importExcel: publicProcedure
-      .input(z.object({ declarations: z.array(z.any()), collaborators: z.array(z.string()) }))
+      .input(z.object({
+        declarations: z.array(z.any()),
+        collaborators: z.array(z.string()),
+      }))
       .mutation(async ({ input }: any) => {
-<<<<<<< HEAD
         let collaboratorsImported = 0;
         for (const name of input.collaborators) {
-          try { await addCollaborator(PUBLIC_USER_ID, name); collaboratorsImported++; } catch {}
+          try {
+            await addCollaborator(PUBLIC_USER_ID, name);
+            collaboratorsImported++;
+          } catch {
+            // Colaborador já existe, ignora
+          }
         }
 
         let declarationsImported = 0;
@@ -181,13 +188,13 @@ export const appRouter = router({
           try {
             const mappedData = {
               userId: PUBLIC_USER_ID,
-              month: row.month || row.Mês || 'Março',
-              collaborator: row.Colaborador || row.collaborator,
-              cpfCliente: row["CPF Cliente"] || row.cpfCliente || "",
-              cliente: row.Cliente || row.cliente,
-              valorRecebido: Number(row["Valor Recebido"] || row.valorRecebido || 0),
-              clienteType: (row.Tipo || row.clienteType) === 'Sócio' ? 'Sócio' : 'Diversos',
-              statusPagamento: (row.Status || row.statusPagamento || 'AGUARDANDO').toUpperCase() as any,
+              month: row.month as 'Março' | 'Abril' | 'Maio',
+              collaborator: row.collaborator,
+              cpfCliente: row.cpfCliente || "",
+              cliente: row.cliente,
+              valorRecebido: Number(row.valorRecebido || 0),
+              clienteType: row.clienteType as 'Sócio' | 'Diversos',
+              statusPagamento: row.statusPagamento as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
             };
 
             const comissao = calculateCommission(
@@ -202,34 +209,8 @@ export const appRouter = router({
             errors.push(`Erro na linha ${declarationsImported + errors.length + 1}: ${e?.message || 'Erro desconhecido'}`);
           }
         }
-        return { success: true, declarationsImported, collaboratorsImported, errors };
-=======
-        for (const name of input.collaborators) { try { await addCollaborator(PUBLIC_USER_ID, name); } catch {} }
-        
-        for (const row of input.declarations) {
-          // MAPEAMENTO DA PLANILHA PARA O BANCO (Protegendo as comissões)
-          const mappedData = {
-            userId: PUBLIC_USER_ID,
-            month: row.month || row.Mês || 'Março', 
-            collaborator: row.Colaborador || row.collaborator,
-            cpfCliente: row["CPF Cliente"] || row.cpfCliente || "",
-            cliente: row.Cliente || row.cliente,
-            valorRecebido: Number(row["Valor Recebido"] || row.valorRecebido || 0),
-            clienteType: (row.Tipo || row.clienteType) === 'Sócio' ? 'Sócio' : 'Diversos',
-            statusPagamento: (row.Status || row.statusPagamento || 'AGUARDANDO').toUpperCase() as any,
-          };
 
-          // AQUI ELE USA O SEU SISTEMA DE CÁLCULO ATUAL
-          const comissao = calculateCommission(
-            mappedData.valorRecebido, 
-            mappedData.clienteType, 
-            mappedData.statusPagamento
-          );
-          
-          await createDeclaration({ ...mappedData, comissao });
-        }
-        return { success: true };
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
+        return { success: true, declarationsImported, collaboratorsImported, errors };
       }),
   }),
 
@@ -256,19 +237,12 @@ export const appRouter = router({
       const mList: ('Março' | 'Abril' | 'Maio')[] = ['Março', 'Abril', 'Maio'];
       return Promise.all(mList.map(async (m) => {
         const decls = await getDeclarationsByMonth(PUBLIC_USER_ID, m);
-<<<<<<< HEAD
         return {
           month: m,
           totalQuantity: decls.length,
           totalValue: decls.reduce((s, d) => s + (d.valorRecebido || 0), 0),
-          totalCommission: decls.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0)
-=======
-        return { 
-          month: m, 
-          totalQuantity: decls.length, 
-          totalValue: decls.reduce((s, d) => s + (d.valorRecebido || 0), 0), 
-          totalCommission: decls.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0) 
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
+          totalCommission: decls.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0),
+          
         };
       }));
     }),

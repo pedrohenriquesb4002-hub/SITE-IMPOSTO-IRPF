@@ -1,536 +1,321 @@
 import { useState, useCallback } from "react";
 import { useParams } from "wouter";
 import { trpc } from "@/lib/trpc";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2, Edit2 } from "lucide-react";
 import { toast } from "sonner";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 const MONTHS = ['Março', 'Abril', 'Maio'] as const;
 
+const monthMap: Record<string, typeof MONTHS[number]> = {
+  marco: 'Março', abril: 'Abril', maio: 'Maio',
+};
+
+const fmt = (v: number) => (v / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+
 export default function DeclarationsPage() {
   const params = useParams();
-  
-  // Mapear paths em minúsculas para nomes dos meses em português
-  const monthMap: Record<string, typeof MONTHS[number]> = {
-    'marco': 'Março',
-    'abril': 'Abril',
-    'maio': 'Maio',
-  };
-  
-  const month = monthMap[params.month as string] || 'Março' as typeof MONTHS[number];
-  const [selectedCollaborator, setSelectedCollaborator] = useState<string | null>(null);
-  
+  const month = monthMap[params.month as string] || 'Março';
+
   const [formData, setFormData] = useState({
-    collaborator: '',
-    cpfCliente: '',
-    cliente: '',
-    valorRecebido: '',
-    clienteType: 'Diversos' as 'Sócio' | 'Diversos',
+    collaborator: '', cpfCliente: '', cliente: '',
+    valorRecebido: '', clienteType: 'Diversos' as 'Sócio' | 'Diversos',
     statusPagamento: 'AGUARDANDO' as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
   });
-
   const [selectedDeclaration, setSelectedDeclaration] = useState<any>(null);
   const [showDeleteAllDialog, setShowDeleteAllDialog] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
   const { data: allDeclarations, refetch } = trpc.declarations.listByMonth.useQuery(month);
   const { data: collaborators } = trpc.collaborators.list.useQuery();
-  
-  // Filtrar declarações por colaborador
-  const declarations = selectedCollaborator 
-    ? allDeclarations?.filter(d => d.collaborator === selectedCollaborator)
-    : allDeclarations;
-
-  // Totais filtrados - APENAS quando status = PAGO
-  const totalVendas = declarations?.length || 0;
-  const totalValor = declarations?.reduce((sum, d) => sum + d.valorRecebido, 0) || 0;
-  const totalComissao = declarations?.reduce((sum, d) => sum + (d.statusPagamento === 'PAGO' ? (d.comissao || 0) : 0), 0) || 0;
-
   const createMutation = trpc.declarations.create.useMutation();
   const updateMutation = trpc.declarations.update.useMutation();
   const deleteMutation = trpc.declarations.delete.useMutation();
-  const { data: settings } = trpc.settings.get.useQuery();
+
+  const declarations = allDeclarations;
+  const totalVendas = declarations?.length || 0;
+  const totalValor = declarations?.reduce((s, d) => s + d.valorRecebido, 0) || 0;
+  const declaracoesPagas = declarations?.filter(d => d.statusPagamento === 'PAGO').length || 0;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    console.log('Form submitted with data:', formData);
-    
     if (!formData.collaborator || !formData.cliente || !formData.valorRecebido) {
-      console.log('Validation failed:', { collaborator: formData.collaborator, cliente: formData.cliente, valorRecebido: formData.valorRecebido });
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
+      toast.error('Preencha todos os campos obrigatórios'); return;
     }
-
     try {
-      const valorRecebidoNum = parseFloat(formData.valorRecebido);
-      if (isNaN(valorRecebidoNum) || valorRecebidoNum < 0) {
-        toast.error('Valor recebido não pode ser negativo');
-        return;
-      }
-      
-      // Sócios, Doações e Doações podem ter valorRecebido = 0
-      if (formData.clienteType === 'Diversos' && valorRecebidoNum <= 0 && formData.statusPagamento !== 'DOAÇÃO') {
-        toast.error('Valor recebido deve ser maior que 0 para vendas diversas (exceto doações)');
-        return;
-      }
-
+      const val = parseFloat(formData.valorRecebido);
+      if (isNaN(val) || val < 0) { toast.error('Valor inválido'); return; }
       await createMutation.mutateAsync({
-        month,
-        collaborator: formData.collaborator.trim(),
-        cpfCliente: formData.cpfCliente.trim(),
-        cliente: formData.cliente.trim(),
-        valorRecebido: Math.round(valorRecebidoNum * 100),
-        clienteType: formData.clienteType,
-        statusPagamento: formData.statusPagamento,
+        month, collaborator: formData.collaborator.trim(),
+        cpfCliente: formData.cpfCliente.trim(), cliente: formData.cliente.trim(),
+        valorRecebido: Math.round(val * 100),
+        clienteType: formData.clienteType, statusPagamento: formData.statusPagamento,
       });
-
-      setFormData({
-        collaborator: '',
-        cpfCliente: '',
-        cliente: '',
-        valorRecebido: '',
-        clienteType: 'Diversos',
-        statusPagamento: 'AGUARDANDO',
-      });
-
+      setFormData({ collaborator: '', cpfCliente: '', cliente: '', valorRecebido: '', clienteType: 'Diversos', statusPagamento: 'AGUARDANDO' });
       refetch();
-      toast.success('Declaração adicionada com sucesso');
-    } catch (error) {
-      console.error('Erro ao adicionar declaração:', error);
-      toast.error(error instanceof Error ? error.message : 'Erro ao adicionar declaração');
-    }
+      toast.success('Declaração adicionada!');
+    } catch { toast.error('Erro ao adicionar declaração'); }
   };
 
-  const handleSaveFromModal = async () => {
-    if (!selectedDeclaration || !selectedDeclaration.id) return;
-
-    if (!selectedDeclaration.collaborator || !selectedDeclaration.cliente) {
-      toast.error('Preencha todos os campos obrigatórios');
-      return;
-    }
-
+  const handleSaveModal = async () => {
+    if (!selectedDeclaration?.id) return;
     try {
-      // O valorRecebido já vem em centavos do input do modal (linha 441)
-      // Não fazer conversão adicional!
-      const valorRecebidoEmCentavos = selectedDeclaration.valorRecebido;
-
       await updateMutation.mutateAsync({
         id: selectedDeclaration.id,
         collaborator: selectedDeclaration.collaborator,
         cpfCliente: selectedDeclaration.cpfCliente,
         cliente: selectedDeclaration.cliente,
-        valorRecebido: valorRecebidoEmCentavos,
+        valorRecebido: selectedDeclaration.valorRecebido,
         clienteType: selectedDeclaration.clienteType,
         statusPagamento: selectedDeclaration.statusPagamento,
       });
-
-      setSelectedDeclaration(null);
-      refetch();
-      toast.success('Declaração atualizada com sucesso');
-    } catch (error) {
-      toast.error('Erro ao atualizar declaração');
-    }
+      setSelectedDeclaration(null); refetch();
+      toast.success('Declaração atualizada!');
+    } catch { toast.error('Erro ao atualizar'); }
   };
 
   const handleDelete = useCallback(async (id: number, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    try {
-      await deleteMutation.mutateAsync(id);
-      refetch();
-      toast.success('Declaração removida');
-    } catch (error) {
-      toast.error('Erro ao remover declaração');
-    }
+    e?.stopPropagation();
+    try { await deleteMutation.mutateAsync(id); refetch(); toast.success('Removida'); }
+    catch { toast.error('Erro ao remover'); }
   }, [deleteMutation, refetch]);
 
-  const handleRowClick = useCallback((decl: any) => {
-    setSelectedDeclaration({ ...decl });
-  }, []);
-
-  const handleDeleteAll = async () => {
-    if (!declarations || declarations.length === 0) {
-      toast.error('Não há declarações para remover');
-      return;
-    }
-
-    setShowDeleteAllDialog(true);
-  };
-
   const confirmDeleteAll = async () => {
-    if (!declarations || declarations.length === 0) return;
-
+    if (!declarations?.length) return;
     setIsDeleting(true);
     try {
-      const idsToDelete = declarations.map(d => d.id);
-      
-      await Promise.all(
-        idsToDelete.map(id => deleteMutation.mutateAsync(id))
-      );
-      
-      setShowDeleteAllDialog(false);
-      refetch();
-      toast.success(`${idsToDelete.length} declarações removidas com sucesso`);
-    } catch (error) {
-      console.error('Erro ao remover declarações:', error);
-      toast.error('Erro ao remover declarações');
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
-  const formatValue = (value: number) => {
-    return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+      await Promise.all(declarations.map(d => deleteMutation.mutateAsync(d.id)));
+      setShowDeleteAllDialog(false); refetch();
+      toast.success('Todas as declarações removidas');
+    } catch { toast.error('Erro ao remover'); }
+    finally { setIsDeleting(false); }
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-slate-900">Declarações - {month}</h1>
-      </div>
-
-      {/* Filter Section */}
-      <Card className="p-4 border-slate-200 bg-slate-50">
-        <div className="flex items-end gap-4">
-          <div className="flex-1">
-            <label className="block text-sm font-medium text-slate-700 mb-2">Filtrar por Colaborador</label>
-            <Select value={selectedCollaborator || '__all__'} onValueChange={(value) => setSelectedCollaborator(value === '__all__' ? null : value)}>
-              <SelectTrigger>
-                <SelectValue placeholder="Todos os colaboradores" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all__">Todos os colaboradores</SelectItem>
-                {collaborators?.map((collab) => (
-                  <SelectItem key={collab.id} value={collab.name}>
-                    {collab.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          {selectedCollaborator && (
-            <Button 
-              variant="outline" 
-              size="sm"
-              onClick={() => setSelectedCollaborator(null)}
-              className="mb-0"
-            >
-              <X className="w-4 h-4 mr-2" />
-              Limpar
-            </Button>
-          )}
+      {/* Header */}
+      <div className="flex justify-between items-start">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">IRPF - {month}</h1>
+          <p className="text-sm text-gray-500 mt-1 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-green-500 inline-block" />
+            Lançamento de Declarações
+          </p>
         </div>
-      </Card>
-
-      {/* Summary Cards - Totais Filtrados (APENAS PAGO) */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="p-6 border-slate-200 bg-gradient-to-br from-blue-50 to-blue-100">
-          <div className="text-sm font-medium text-slate-600 mb-2">Total de Vendas</div>
-          <div className="text-3xl font-bold text-blue-900">{totalVendas}</div>
-        </Card>
-        <Card className="p-6 border-slate-200 bg-gradient-to-br from-green-50 to-green-100">
-          <div className="text-sm font-medium text-slate-600 mb-2">Valor Total Arrecadado</div>
-          <div className="text-3xl font-bold text-green-900">{formatValue(totalValor)}</div>
-        </Card>
-        <Card className="p-6 border-slate-200 bg-gradient-to-br from-purple-50 to-purple-100">
-          <div className="text-sm font-medium text-slate-600 mb-2">Total de Comissão (PAGO)</div>
-          <div className="text-3xl font-bold text-purple-900">{formatValue(totalComissao)}</div>
-        </Card>
+        <button
+          onClick={() => declarations?.length && setShowDeleteAllDialog(true)}
+          className="flex items-center gap-2 bg-[#e85d1a] hover:bg-[#c94d12] text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+        >
+          <Trash2 className="w-4 h-4" /> Excluir Todas
+        </button>
       </div>
 
-      {/* Form Card */}
-      <Card className="p-6 border-slate-200">
-        <h2 className="text-xl font-semibold text-slate-900 mb-4">Nova Declaração</h2>
-        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Colaborador *</label>
-            <Select 
-              value={formData.collaborator} 
-              onValueChange={(value) => {
-                if (value && value.trim()) {
-                  setFormData({ ...formData, collaborator: value.trim() });
-                }
-              }}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Selecione o colaborador" />
-              </SelectTrigger>
-              <SelectContent>
-                {collaborators && collaborators.length > 0 ? (
-                  collaborators.map((collab) => (
-                    <SelectItem key={collab.id} value={collab.name}>
-                      {collab.name}
-                    </SelectItem>
-                  ))
-                ) : (
-                  <SelectItem value="__empty__" disabled>Nenhum colaborador disponível</SelectItem>
-                )}
-              </SelectContent>
-            </Select>
+      {/* Nova Declaração */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 shadow-sm">
+        <div className="flex items-center gap-2 mb-5">
+          <div className="w-7 h-7 rounded-full bg-green-100 flex items-center justify-center">
+            <Plus className="w-4 h-4 text-green-700" />
           </div>
+          <h2 className="text-lg font-semibold text-gray-900">Nova Declaração</h2>
+        </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">CPF Cliente</label>
-            <Input
-              placeholder="000.000.000-00"
-              value={formData.cpfCliente}
-              onChange={(e) => setFormData({ ...formData, cpfCliente: e.target.value })}
-            />
+        <form onSubmit={handleSubmit}>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Colaborador</label>
+              <Select value={formData.collaborator} onValueChange={(v) => setFormData({ ...formData, collaborator: v })}>
+                <SelectTrigger className="border-gray-300">
+                  <SelectValue placeholder="Selecione..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {collaborators?.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Nome do Cliente</label>
+              <Input placeholder="Digite o nome" value={formData.cliente} onChange={e => setFormData({ ...formData, cliente: e.target.value })} className="border-gray-300" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
+              <Input placeholder="000.000.000-00" value={formData.cpfCliente} onChange={e => setFormData({ ...formData, cpfCliente: e.target.value })} className="border-gray-300" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Valor Recebido</label>
+              <Input placeholder="R$ 0,00" type="number" step="0.01" value={formData.valorRecebido} onChange={e => setFormData({ ...formData, valorRecebido: e.target.value })} className="border-gray-300" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+              <Select value={formData.clienteType} onValueChange={(v) => setFormData({ ...formData, clienteType: v as any })}>
+                <SelectTrigger className="border-gray-300"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Sócio">Sócio</SelectItem>
+                  <SelectItem value="Diversos">Diversos</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+              <Select value={formData.statusPagamento} onValueChange={(v) => setFormData({ ...formData, statusPagamento: v as any })}>
+                <SelectTrigger className="border-gray-300"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AGUARDANDO">Aguardando</SelectItem>
+                  <SelectItem value="PAGO">Pago</SelectItem>
+                  <SelectItem value="DOAÇÃO">Doação</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Nome do Cliente *</label>
-            <Input
-              placeholder="Nome do cliente"
-              value={formData.cliente}
-              onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Valor Recebido (R$) *</label>
-            <Input
-              placeholder="0.00"
-              type="number"
-              step="0.01"
-              value={formData.valorRecebido}
-              onChange={(e) => setFormData({ ...formData, valorRecebido: e.target.value })}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Cliente</label>
-            <Select value={formData.clienteType} onValueChange={(value) => setFormData({ ...formData, clienteType: value as 'Sócio' | 'Diversos' })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Diversos">Diversos</SelectItem>
-                <SelectItem value="Sócio">Sócio</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Status de Pagamento</label>
-            <Select value={formData.statusPagamento} onValueChange={(value) => setFormData({ ...formData, statusPagamento: value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="AGUARDANDO">AGUARDANDO</SelectItem>
-                <SelectItem value="PAGO">PAGO</SelectItem>
-                <SelectItem value="DOAÇÃO">DOAÇÃO</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <Button type="submit" className="md:col-span-2 lg:col-span-1 gap-2">
-            <Plus className="w-4 h-4" />
-            Adicionar Declaração
-          </Button>
+          <button type="submit" className="flex items-center gap-2 bg-[#1a7a40] hover:bg-[#155f32] text-white px-6 py-2.5 rounded-lg font-medium transition-colors">
+            <Plus className="w-4 h-4" /> Adicionar Declaração
+          </button>
         </form>
-      </Card>
+      </div>
 
-      {/* Delete All Button */}
-      {declarations && declarations.length > 0 && (
-        <div className="flex justify-end">
-          <Button 
-            variant="destructive" 
-            onClick={handleDeleteAll}
-            className="gap-2"
-          >
-            <Trash2 className="w-4 h-4" />
-            Excluir Tudo ({declarations.length})
-          </Button>
-        </div>
-      )}
-
-      {/* Simplified Table Card */}
-      <Card className="border-slate-200 overflow-hidden">
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-slate-50">
-              <TableRow>
-                <TableHead className="text-slate-700">Colaborador</TableHead>
-                <TableHead className="text-slate-700">CPF Cliente</TableHead>
-                <TableHead className="text-slate-700">Cliente</TableHead>
-                <TableHead className="text-slate-700">Status</TableHead>
-                <TableHead className="text-slate-700">Ações</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {declarations?.map((decl) => (
-                <TableRow 
-                  key={decl.id} 
-                  className="hover:bg-slate-50 cursor-pointer"
-                  onClick={() => setSelectedDeclaration(decl)}
-                >
-                  <TableCell className="text-slate-900 font-medium">{decl.collaborator}</TableCell>
-                  <TableCell className="text-slate-600">{decl.cpfCliente || '-'}</TableCell>
-                  <TableCell className="text-slate-900">{decl.cliente}</TableCell>
-                  <TableCell>
-                    <span className={`px-2 py-1 rounded text-xs font-medium ${
-                      decl.statusPagamento === 'PAGO' ? 'bg-green-100 text-green-800' :
-                      decl.statusPagamento === 'DOAÇÃO' ? 'bg-blue-100 text-blue-800' :
-                      'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {decl.statusPagamento}
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Colaborador</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Cliente</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">CPF</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Valor</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tipo</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {declarations?.map(decl => (
+                <tr key={decl.id} className="hover:bg-gray-50 cursor-pointer" onClick={() => setSelectedDeclaration({ ...decl })}>
+                  <td className="px-4 py-3 font-medium text-gray-900">{decl.collaborator}</td>
+                  <td className="px-4 py-3 text-gray-700">{decl.cliente}</td>
+                  <td className="px-4 py-3 text-gray-500">{decl.cpfCliente || '-'}</td>
+                  <td className="px-4 py-3 text-gray-900">{fmt(decl.valorRecebido)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold ${decl.clienteType === 'Sócio' ? 'bg-[#e85d1a] text-white' : 'bg-orange-500 text-white'}`}>
+                      {decl.clienteType}
                     </span>
-                  </TableCell>
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${
+                      decl.statusPagamento === 'PAGO' ? 'border-green-400 text-green-700' :
+                      decl.statusPagamento === 'DOAÇÃO' ? 'border-blue-400 text-blue-700' :
+                      'border-orange-400 text-orange-700'
+                    }`}>
+                      {decl.statusPagamento === 'PAGO' ? 'Pago' : decl.statusPagamento === 'DOAÇÃO' ? 'Doação' : 'Aguardando'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-2">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        onClick={() => handleDelete(decl.id)} 
-                        className="h-8"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
+                      <button onClick={() => setSelectedDeclaration({ ...decl })} className="text-gray-400 hover:text-gray-600 p-1"><Edit2 className="w-4 h-4" /></button>
+                      <button onClick={(e) => handleDelete(decl.id, e)} className="text-gray-400 hover:text-red-600 p-1"><Trash2 className="w-4 h-4" /></button>
                     </div>
-                  </TableCell>
-                </TableRow>
+                  </td>
+                </tr>
               ))}
-            </TableBody>
-          </Table>
+              {!declarations?.length && (
+                <tr><td colSpan={7} className="text-center py-10 text-gray-400">Nenhuma declaração registrada</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      </Card>
+      </div>
 
-      {/* Modal de Detalhes */}
-      <Dialog open={!!selectedDeclaration} onOpenChange={(open) => !open && setSelectedDeclaration(null)}>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#1a7a40] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Total de Declarações</p>
+            <p className="text-4xl font-bold mt-2">{totalVendas}</p>
+            <p className="text-xs opacity-70 mt-1">Registradas no sistema</p>
+          </div>
+          <Trash2 className="w-8 h-8 opacity-30" />
+        </div>
+        <div className="bg-[#e85d1a] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Total Recebido</p>
+            <p className="text-3xl font-bold mt-2">{fmt(totalValor)}</p>
+            <p className="text-xs opacity-70 mt-1">Valor total arrecadado</p>
+          </div>
+          <span className="text-4xl opacity-30">$</span>
+        </div>
+        <div className="bg-[#2db55d] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Declarações Pagas</p>
+            <p className="text-4xl font-bold mt-2">{declaracoesPagas}</p>
+            <p className="text-xs opacity-70 mt-1">Pagamentos confirmados</p>
+          </div>
+          <span className="text-4xl opacity-30">$</span>
+        </div>
+      </div>
+
+      {/* Edit Modal */}
+      <Dialog open={!!selectedDeclaration} onOpenChange={open => !open && setSelectedDeclaration(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Detalhes da Declaração</DialogTitle>
-            <DialogDescription>
-              Visualize e edite as informações da declaração
-            </DialogDescription>
+            <DialogTitle>Editar Declaração</DialogTitle>
+            <DialogDescription>Altere os dados e salve</DialogDescription>
           </DialogHeader>
-
           {selectedDeclaration && (
-            <div className="space-y-4">
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Colaborador</label>
-                <Input
-                  value={selectedDeclaration.collaborator}
-                  onChange={(e) => setSelectedDeclaration({ ...selectedDeclaration, collaborator: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">CPF Cliente</label>
-                <Input
-                  value={selectedDeclaration.cpfCliente}
-                  onChange={(e) => setSelectedDeclaration({ ...selectedDeclaration, cpfCliente: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Cliente</label>
-                <Input
-                  value={selectedDeclaration.cliente}
-                  onChange={(e) => setSelectedDeclaration({ ...selectedDeclaration, cliente: e.target.value })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Valor Recebido (R$)</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={(selectedDeclaration.valorRecebido / 100).toFixed(2)}
-                  onChange={(e) => setSelectedDeclaration({ ...selectedDeclaration, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Tipo de Cliente</label>
-                <Select 
-                  value={selectedDeclaration.clienteType} 
-                  onValueChange={(value) => setSelectedDeclaration({ ...selectedDeclaration, clienteType: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Diversos">Diversos</SelectItem>
-                    <SelectItem value="Sócio">Sócio</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Comissão Calculada</label>
-                <div className="p-3 bg-slate-100 rounded font-semibold text-slate-900">
-                  {formatValue(selectedDeclaration.comissao || 0)}
+            <div className="space-y-3">
+              {[
+                { label: 'Colaborador', key: 'collaborator' },
+                { label: 'CPF Cliente', key: 'cpfCliente' },
+                { label: 'Cliente', key: 'cliente' },
+              ].map(f => (
+                <div key={f.key}>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{f.label}</label>
+                  <Input value={selectedDeclaration[f.key] || ''} onChange={e => setSelectedDeclaration({ ...selectedDeclaration, [f.key]: e.target.value })} />
                 </div>
-              </div>
-
+              ))}
               <div>
-                <label className="block text-sm font-medium text-slate-700 mb-1">Status de Pagamento</label>
-                <Select 
-                  value={selectedDeclaration.statusPagamento} 
-                  onValueChange={(value) => setSelectedDeclaration({ ...selectedDeclaration, statusPagamento: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Valor Recebido (R$)</label>
+                <Input type="number" step="0.01" value={(selectedDeclaration.valorRecebido / 100).toFixed(2)}
+                  onChange={e => setSelectedDeclaration({ ...selectedDeclaration, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })} />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Tipo</label>
+                <Select value={selectedDeclaration.clienteType} onValueChange={v => setSelectedDeclaration({ ...selectedDeclaration, clienteType: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent><SelectItem value="Diversos">Diversos</SelectItem><SelectItem value="Sócio">Sócio</SelectItem></SelectContent>
+                </Select>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <Select value={selectedDeclaration.statusPagamento} onValueChange={v => setSelectedDeclaration({ ...selectedDeclaration, statusPagamento: v })}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="AGUARDANDO">AGUARDANDO</SelectItem>
-                    <SelectItem value="PAGO">PAGO</SelectItem>
-                    <SelectItem value="DOAÇÃO">DOAÇÃO</SelectItem>
+                    <SelectItem value="AGUARDANDO">Aguardando</SelectItem>
+                    <SelectItem value="PAGO">Pago</SelectItem>
+                    <SelectItem value="DOAÇÃO">Doação</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-
-              <div className="flex gap-3 justify-end pt-4">
-                <Button 
-                  variant="outline" 
-                  onClick={() => setSelectedDeclaration(null)}
-                >
-                  Cancelar
-                </Button>
-                <Button 
-                  onClick={handleSaveFromModal}
-                  className="bg-blue-600 hover:bg-blue-700"
-                >
-                  Salvar Alterações
-                </Button>
+              <div className="flex gap-3 justify-end pt-2">
+                <button onClick={() => setSelectedDeclaration(null)} className="px-4 py-2 rounded-lg border border-gray-300 text-sm hover:bg-gray-50">Cancelar</button>
+                <button onClick={handleSaveModal} className="px-4 py-2 rounded-lg bg-[#1a7a40] text-white text-sm hover:bg-[#155f32]">Salvar</button>
               </div>
             </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Delete All Confirmation Dialog */}
+      {/* Delete All Dialog */}
       <AlertDialog open={showDeleteAllDialog} onOpenChange={setShowDeleteAllDialog}>
-        <AlertDialogContent className="max-w-md">
+        <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle className="text-red-600">Excluir Todas as Declarações</AlertDialogTitle>
-            <AlertDialogDescription className="text-slate-600">
-              Tem certeza que deseja excluir <strong>{declarations?.length || 0} declaração(ões)</strong>? Esta ação não pode ser desfeita e todos os dados serão removidos permanentemente.
-            </AlertDialogDescription>
+            <AlertDialogDescription>Esta ação não pode ser desfeita. {declarations?.length} declaração(ões) serão removidas.</AlertDialogDescription>
           </AlertDialogHeader>
-          <div className="bg-red-50 border border-red-200 rounded p-3 text-sm text-red-700">
-            <strong>Aviso:</strong> Esta operação é irreversível. Certifique-se antes de confirmar.
-          </div>
-          <div className="flex gap-3 justify-end pt-4">
-            <AlertDialogCancel disabled={isDeleting}>
-              Cancelar
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmDeleteAll}
-              disabled={isDeleting}
-              className="bg-red-600 hover:bg-red-700 text-white"
-            >
+          <div className="flex gap-3 justify-end">
+            <AlertDialogCancel disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteAll} disabled={isDeleting} className="bg-red-600 hover:bg-red-700">
               {isDeleting ? 'Excluindo...' : 'Excluir Tudo'}
             </AlertDialogAction>
           </div>

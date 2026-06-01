@@ -12,7 +12,6 @@ import SummaryPage from "./pages/SummaryPage";
 import CollaboratorsPage from "./pages/CollaboratorsPage";
 import ImportPage from "./pages/ImportPage";
 import QuotasPage from "./pages/QuotasPage";
-import ExportPage from "./pages/ExportPage";
 
 function Router() {
   return (
@@ -26,7 +25,7 @@ function Router() {
         <Route path={"/colaboradores"} component={CollaboratorsPage} />
         <Route path={"/cotas"} component={QuotasPage} />
         <Route path={"/importar"} component={ImportPage} />
-        <Route path={"/exportar"} component={ExportPage} />
+        <Route path={"/exportar"} component={ImportPage} />
         <Route path={"/404"} component={NotFound} />
         <Route component={NotFound} />
       </Switch>

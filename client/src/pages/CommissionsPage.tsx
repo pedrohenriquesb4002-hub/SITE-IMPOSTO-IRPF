@@ -1,256 +1,117 @@
-import { useState } from "react";
 import { trpc } from "@/lib/trpc";
-import { Card } from "@/components/ui/card";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { TrendingUp, DollarSign } from "lucide-react";
+
+const fmt = (v: number) => (v / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 export default function CommissionsPage() {
-  const { data: declarationsMarcao } = trpc.declarations.listByMonth.useQuery('Março');
-  const { data: declarationsAbril } = trpc.declarations.listByMonth.useQuery('Abril');
-  const { data: declarationsMaio } = trpc.declarations.listByMonth.useQuery('Maio');
+  const { data: marco } = trpc.declarations.listByMonth.useQuery('Março');
+  const { data: abril } = trpc.declarations.listByMonth.useQuery('Abril');
+  const { data: maio } = trpc.declarations.listByMonth.useQuery('Maio');
 
-  const formatValue = (value: number) => {
-    return (value / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  const all = [...(marco || []), ...(abril || []), ...(maio || [])];
+
+  const byCollaborator = () => {
+    const map: Record<string, { total: any; marco: any; abril: any; maio: any }> = {};
+    const empty = () => ({ qty: 0, value: 0, commission: 0 });
+
+    const add = (decl: any, bucket: any) => {
+      bucket.qty++;
+      bucket.value += decl.valorRecebido || 0;
+      if (decl.statusPagamento === 'PAGO') bucket.commission += decl.comissao || 0;
+    };
+
+    const process = (decls: any[] | undefined, key: 'marco' | 'abril' | 'maio') => {
+      decls?.forEach(d => {
+        if (!map[d.collaborator]) map[d.collaborator] = { total: empty(), marco: empty(), abril: empty(), maio: empty() };
+        add(d, map[d.collaborator][key]);
+        add(d, map[d.collaborator].total);
+      });
+    };
+
+    process(marco, 'marco');
+    process(abril, 'abril');
+    process(maio, 'maio');
+    return Object.entries(map).map(([name, data]) => ({ name, ...data }));
   };
 
-  // Agrupar declarações por colaborador e calcular totais
-  const groupByCollaborator = (declarations: any[] | undefined) => {
-    if (!declarations) return [];
-    
-    const grouped: Record<string, { quantity: number; totalValue: number; totalCommission: number }> = {};
-    
-    declarations.forEach((decl) => {
-      if (!grouped[decl.collaborator]) {
-        grouped[decl.collaborator] = { quantity: 0, totalValue: 0, totalCommission: 0 };
-      }
-      grouped[decl.collaborator].quantity += 1;
-      grouped[decl.collaborator].totalValue += decl.valorRecebido || 0;
-      if (decl.statusPagamento === 'PAGO') {
-        grouped[decl.collaborator].totalCommission += decl.comissao || 0;
-      }
-    });
-    
-    return Object.entries(grouped).map(([name, data]) => ({
-      collaborator: name,
-      ...data,
-    }));
-  };
-
-  const renderMonthSummary = (declarations: any[] | undefined) => {
-    const grouped = groupByCollaborator(declarations);
-    const totalQuantity = grouped.reduce((sum, g) => sum + g.quantity, 0);
-    
-    if (!declarations) {
-      return (
-        <div className="text-center py-8 text-slate-500">
-          Carregando dados...
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        {/* Summary Card */}
-        <Card className="p-6 border-slate-200 bg-gradient-to-br from-blue-50 to-blue-100">
-          <div className="text-sm font-medium text-slate-600 mb-2">Total de Vendas</div>
-          <div className="text-3xl font-bold text-blue-900">{totalQuantity}</div>
-        </Card>
-
-        {/* Collaborators Summary Table */}
-        <Card className="border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50 border-b border-slate-200">
-                  <TableHead className="text-slate-900">Colaborador</TableHead>
-                  <TableHead className="text-slate-900 text-right">Quantidade de Vendas</TableHead>
-                  <TableHead className="text-slate-900 text-right">Valor Total Recebido</TableHead>
-                  <TableHead className="text-slate-900 text-right">Comissão Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grouped.length > 0 ? (
-                  grouped.map((group) => (
-                    <TableRow key={group.collaborator} className="border-b border-slate-200 hover:bg-slate-50">
-                      <TableCell className="font-medium text-slate-900">{group.collaborator}</TableCell>
-                      <TableCell className="text-right text-slate-600">{group.quantity}</TableCell>
-                      <TableCell className="text-right text-slate-900">{formatValue(group.totalValue)}</TableCell>
-                      <TableCell className="text-right font-medium text-slate-900">{formatValue(group.totalCommission)}</TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-slate-500">
-                      Nenhuma venda registrada neste mês
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      </div>
-    );
-  };
-
-  const renderMonthDetails = (month: 'Março' | 'Abril' | 'Maio', declarations: any[] | undefined) => {
-    if (!declarations) {
-      return (
-        <div className="text-center py-8 text-slate-500">
-          Carregando dados...
-        </div>
-      );
-    }
-
-    // Filtrar apenas declarações com status PAGO
-    const paidDeclarations = declarations.filter(d => d.statusPagamento === 'PAGO');
-
-    return (
-      <Card className="border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="bg-slate-50 border-b border-slate-200">
-                <TableHead className="text-slate-900">Colaborador</TableHead>
-                <TableHead className="text-slate-900">Cliente</TableHead>
-                <TableHead className="text-slate-900 text-right">Valor Recebido</TableHead>
-                <TableHead className="text-slate-900 text-right">Comissão</TableHead>
-                <TableHead className="text-slate-900">Status</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paidDeclarations.length > 0 ? (
-                paidDeclarations.map((decl) => (
-                  <TableRow key={decl.id} className="border-b border-slate-200 hover:bg-slate-50">
-                    <TableCell className="font-medium text-slate-900">{decl.collaborator}</TableCell>
-                    <TableCell className="text-slate-600">{decl.nomeCliente}</TableCell>
-                    <TableCell className="text-right text-slate-900">{formatValue(decl.valorRecebido)}</TableCell>
-                    <TableCell className="text-right font-medium text-slate-900">{formatValue(decl.comissao)}</TableCell>
-                    <TableCell>
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
-                        PAGO
-                      </span>
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-8 text-slate-500">
-                    Nenhuma venda paga neste mês
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      </Card>
-    );
-  };
-
-  const renderTotalSummary = () => {
-    const allDeclarations = [
-      ...(declarationsMarcao || []),
-      ...(declarationsAbril || []),
-      ...(declarationsMaio || []),
-    ];
-    
-    const grouped = groupByCollaborator(allDeclarations);
-    const totalQuantity = grouped.reduce((sum, g) => sum + g.quantity, 0);
-    const totalValue = grouped.reduce((sum, g) => sum + g.totalValue, 0);
-    const totalCommission = grouped.reduce((sum, g) => sum + g.totalCommission, 0);
-
-    return (
-      <div className="space-y-4">
-        {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className="p-6 border-slate-200 bg-gradient-to-br from-blue-50 to-blue-100">
-            <div className="text-sm font-medium text-slate-600 mb-2">Total de Vendas</div>
-            <div className="text-3xl font-bold text-blue-900">{totalQuantity}</div>
-          </Card>
-
-          <Card className="p-6 border-slate-200 bg-gradient-to-br from-green-50 to-green-100">
-            <div className="text-sm font-medium text-slate-600 mb-2">Valor Total Recebido</div>
-            <div className="text-3xl font-bold text-green-900">{formatValue(totalValue)}</div>
-          </Card>
-
-          <Card className="p-6 border-slate-200 bg-gradient-to-br from-purple-50 to-purple-100">
-            <div className="text-sm font-medium text-slate-600 mb-2">Comissão Total (PAGO)</div>
-            <div className="text-3xl font-bold text-purple-900">{formatValue(totalCommission)}</div>
-          </Card>
-        </div>
-
-        {/* Total by Collaborator Table */}
-        <Card className="border-slate-200 overflow-hidden">
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow className="bg-slate-50 border-b border-slate-200">
-                  <TableHead className="text-slate-900">Colaborador</TableHead>
-                  <TableHead className="text-slate-900 text-right">Quantidade de Vendas</TableHead>
-                  <TableHead className="text-slate-900 text-right">Valor Total Recebido</TableHead>
-                  <TableHead className="text-slate-900 text-right">Comissão Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grouped.length > 0 ? (
-                  grouped.map((group) => (
-                    <TableRow key={group.collaborator} className="border-b border-slate-200 hover:bg-slate-50">
-                      <TableCell className="font-medium text-slate-900">{group.collaborator}</TableCell>
-                      <TableCell className="text-right text-slate-600">{group.quantity}</TableCell>
-                      <TableCell className="text-right text-slate-900">{formatValue(group.totalValue)}</TableCell>
-                      <TableCell className="text-right font-medium text-slate-900">{formatValue(group.totalCommission)}</TableCell>
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell colSpan={4} className="text-center py-8 text-slate-500">
-                      Nenhuma venda registrada
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
-        </Card>
-      </div>
-    );
-  };
+  const collabs = byCollaborator();
+  const totalQty = all.length;
+  const totalValue = all.reduce((s, d) => s + (d.valorRecebido || 0), 0);
+  const totalComm = all.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0);
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-3xl font-bold text-slate-900">Comissões</h1>
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Comissões</h1>
+        <p className="text-sm text-gray-500 mt-1">Acompanhamento de vendas e comissões dos colaboradores</p>
       </div>
 
-      <Tabs defaultValue="total" className="w-full">
-        <TabsList className="grid w-full grid-cols-4">
-          <TabsTrigger value="total">TOTAL</TabsTrigger>
-          <TabsTrigger value="marco">Março</TabsTrigger>
-          <TabsTrigger value="abril">Abril</TabsTrigger>
-          <TabsTrigger value="maio">Maio</TabsTrigger>
-        </TabsList>
+      {/* Summary Cards */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-[#1a7a40] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Total de Vendas</p>
+            <p className="text-4xl font-bold mt-2">{totalQty}</p>
+            <p className="text-xs opacity-70 mt-1">Março a Maio</p>
+          </div>
+          <TrendingUp className="w-8 h-8 opacity-30" />
+        </div>
+        <div className="bg-[#e85d1a] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Total Recebido</p>
+            <p className="text-3xl font-bold mt-2">{fmt(totalValue)}</p>
+            <p className="text-xs opacity-70 mt-1">Todos os colaboradores</p>
+          </div>
+          <DollarSign className="w-8 h-8 opacity-30" />
+        </div>
+        <div className="bg-[#2db55d] rounded-xl p-5 text-white flex justify-between items-start">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider opacity-80">Total Comissões</p>
+            <p className="text-3xl font-bold mt-2">{fmt(totalComm)}</p>
+            <p className="text-xs opacity-70 mt-1">Apenas pagos</p>
+          </div>
+          <DollarSign className="w-8 h-8 opacity-30" />
+        </div>
+      </div>
 
-        {/* TOTAL Tab */}
-        <TabsContent value="total" className="space-y-4">
-          {renderTotalSummary()}
-        </TabsContent>
-
-        {/* Março Tab */}
-        <TabsContent value="marco" className="space-y-4">
-          {renderMonthSummary(declarationsMarcao)}
-        </TabsContent>
-
-        {/* Abril Tab */}
-        <TabsContent value="abril" className="space-y-4">
-          {renderMonthSummary(declarationsAbril)}
-        </TabsContent>
-
-        {/* Maio Tab */}
-        <TabsContent value="maio" className="space-y-4">
-          {renderMonthSummary(declarationsMaio)}
-        </TabsContent>
-      </Tabs>
+      {/* Table */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase" rowSpan={2}>Colaborador</th>
+                <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-l border-gray-200" colSpan={3}>Total (3 meses)</th>
+                <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-l border-gray-200" colSpan={3}>Março</th>
+                <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-l border-gray-200" colSpan={3}>Abril</th>
+                <th className="text-center px-4 py-2 text-xs font-semibold text-gray-500 uppercase border-l border-gray-200" colSpan={3}>Maio</th>
+              </tr>
+              <tr className="bg-gray-50 border-b border-gray-200 text-xs text-gray-500">
+                {['Vendas', 'Recebido', 'Comissão', 'Vendas', 'Recebido', 'Comissão', 'Vendas', 'Recebido', 'Comissão', 'Vendas', 'Recebido', 'Comissão'].map((h, i) => (
+                  <th key={i} className={`px-3 py-2 font-medium text-center ${i % 3 === 0 ? 'border-l border-gray-200' : ''}`}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {collabs.map(c => (
+                <tr key={c.name} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-medium text-gray-900">{c.name}</td>
+                  {[c.total, c.marco, c.abril, c.maio].map((b, i) => (
+                    <>
+                      <td key={`${i}q`} className={`px-3 py-3 text-center text-gray-700 ${i === 0 ? 'border-l border-gray-200' : 'border-l border-gray-200'}`}>{b.qty}</td>
+                      <td key={`${i}v`} className="px-3 py-3 text-center text-gray-700">{fmt(b.value)}</td>
+                      <td key={`${i}c`} className="px-3 py-3 text-center font-medium text-[#1a7a40]">{fmt(b.commission)}</td>
+                    </>
+                  ))}
+                </tr>
+              ))}
+              {!collabs.length && (
+                <tr><td colSpan={13} className="text-center py-10 text-gray-400">Nenhuma comissão registrada</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
