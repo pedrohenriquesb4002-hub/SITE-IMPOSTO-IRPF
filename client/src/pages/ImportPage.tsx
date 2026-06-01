@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Upload, Download, AlertCircle, CheckCircle2, Loader2, Info } from 'lucide-react';
 import { trpc } from '@/lib/trpc';
 import { toast } from 'sonner';
@@ -24,10 +23,18 @@ const parseValorBRL = (raw: any): number => {
   return isNaN(num) ? 0 : Math.round(num * 100);
 };
 
+// Divide array em lotes de tamanho N
+function chunk<T>(arr: T[], size: number): T[][] {
+  const result: T[][] = [];
+  for (let i = 0; i < arr.length; i += size) result.push(arr.slice(i, i + size));
+  return result;
+}
+
 export default function ImportPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [result, setResult] = useState<ImportResult | null>(null);
+  const [progress, setProgress] = useState('');
 
   const importMutation = trpc.importData.importExcel.useMutation();
   const exportQuery = trpc.declarations.exportToExcel.useQuery(undefined, { enabled: false });
@@ -35,7 +42,9 @@ export default function ImportPage() {
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsImporting(true); setResult(null);
+    setIsImporting(true);
+    setResult(null);
+    setProgress('Lendo arquivo...');
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -48,7 +57,6 @@ export default function ImportPage() {
         if (!sheet) return;
         const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
 
-        // Encontrar linha do cabeçalho
         let headerRowIndex = -1;
         let headerRow: any[] | null = null;
         for (let i = 0; i < Math.min(5, data.length); i++) {
@@ -70,7 +78,6 @@ export default function ImportPage() {
           status: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'status'),
         };
 
-        // Se cliente não encontrado pela busca exata, tentar coluna 1 (índice 1)
         if (idx.cliente < 0) idx.cliente = 1;
 
         for (let i = headerRowIndex + 1; i < data.length; i++) {
@@ -78,26 +85,13 @@ export default function ImportPage() {
           if (!row || row.every((v: any) => v === null || v === undefined || v === '')) continue;
 
           const colaborador = idx.colaborador >= 0 ? row[idx.colaborador]?.toString().trim() : null;
-          if (!colaborador) continue; // pula linha sem colaborador, mas NÃO para o loop
+          if (!colaborador) continue;
 
           const clienteRaw = idx.cliente >= 0 ? row[idx.cliente]?.toString().trim() : '';
-          // Na planilha real, CPF e Cliente parecem estar na mesma coluna — usar cpf como cliente se cliente estiver vazio
           const cpfRaw = idx.cpf >= 0 && row[idx.cpf] != null ? row[idx.cpf].toString().trim() : '';
-          // Se a coluna "Cliente" tem formato de CPF, ela é CPF; usar coluna seguinte como nome
-          const isCpfInClienteCol = /^\d{3}[.\-]?\d{3}[.\-]?\d{3}[.\-]?\d{2}$/.test(clienteRaw.replace(/\D/g, '').padStart(11, '0').slice(0, 11));
 
-          let cliente = clienteRaw;
+          let cliente = normalizeName(clienteRaw) || normalizeName(cpfRaw) || `Cliente_${i}`;
           let cpfCliente = cpfRaw;
-
-          // Na planilha exportada deste sistema, col 1 = Cliente (CPF/nome), col 2 = CPF
-          // Detectar se col cliente na verdade é CPF
-          if (isCpfInClienteCol && !cpfRaw) {
-            cpfCliente = clienteRaw;
-            cliente = cpfRaw || clienteRaw; // fallback
-          }
-
-          if (!cliente) cliente = cpfCliente || `Cliente_${i}`;
-          cliente = normalizeName(cliente);
 
           const valorEmCentavos = idx.valor >= 0 ? parseValorBRL(row[idx.valor]) : 0;
 
@@ -105,35 +99,17 @@ export default function ImportPage() {
           const clienteType: 'Sócio' | 'Diversos' =
             tipoRaw.toLowerCase().includes('sócio') || tipoRaw.toLowerCase().includes('socio') ? 'Sócio' : 'Diversos';
 
-          const statusRaw = idx.status >= 0 ? row[idx.status]?.toString().trim().toUpperCase() || '' : 'AGUARDANDO';
+          const statusRaw = idx.status >= 0 ? row[idx.status]?.toString().trim().toUpperCase() || '' : '';
           const statusPagamento: 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' =
             statusRaw.includes('PAGO') ? 'PAGO' :
             statusRaw.includes('DOA') ? 'DOAÇÃO' : 'AGUARDANDO';
 
-          declarations.push({
-            month,
-            collaborator: colaborador,
-            cpfCliente,
-            cliente,
-            valorRecebido: valorEmCentavos,
-            clienteType,
-            statusPagamento,
-          });
+          declarations.push({ month, collaborator: colaborador, cpfCliente, cliente, valorRecebido: valorEmCentavos, clienteType, statusPagamento });
           collaborators.add(colaborador);
         }
       });
 
-      // Importar colaboradores da aba Comissões também
-      const commissionsSheet = workbook.Sheets['Comissões'] || workbook.Sheets['Comissoes'];
-      if (commissionsSheet) {
-        const data = XLSX.utils.sheet_to_json(commissionsSheet, { header: 1 }) as any[][];
-        for (let i = 1; i < data.length; i++) {
-          const name = data[i]?.[0]?.toString().trim();
-          if (name && name !== 'COLABORADOR' && !name.includes('RESUMO')) collaborators.add(name);
-        }
-      }
-
-      // Importar colaboradores da aba Cotas
+      // Colaboradores de outras abas
       const cotasSheet = workbook.Sheets['Cotas'];
       if (cotasSheet) {
         const data = XLSX.utils.sheet_to_json(cotasSheet, { header: 1 }) as any[][];
@@ -144,27 +120,42 @@ export default function ImportPage() {
       }
 
       if (!declarations.length) {
-        toast.error('Nenhuma declaração encontrada. Verifique as abas da planilha.');
-        setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Nenhuma declaração encontrada nas abas Março, Abril ou Maio'] });
-        setIsImporting(false);
-        const input = document.getElementById('file-input') as HTMLInputElement;
-        if (input) input.value = '';
+        toast.error('Nenhuma declaração encontrada nas abas Março, Abril ou Maio.');
+        setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Nenhuma declaração encontrada'] });
         return;
       }
 
-      const r = await importMutation.mutateAsync({ declarations, collaborators: Array.from(collaborators) });
-      setResult({
-        declarationsImported: r.declarationsImported,
-        collaboratorsImported: r.collaboratorsImported,
-        errors: r.errors || [],
-      });
-      if (r.declarationsImported > 0) toast.success(`✅ ${r.declarationsImported} declarações importadas!`);
-      if (r.errors?.length) toast.error(`⚠️ ${r.errors.length} erro(s) durante importação`);
+      // ── Enviar em lotes de 50 para não estourar o limite do Vercel ──────────
+      const BATCH = 50;
+      const batches = chunk(declarations, BATCH);
+      let totalImported = 0;
+      let totalCollabs = 0;
+      const allErrors: string[] = [];
+
+      // Primeiro lote envia os colaboradores; os demais mandam lista vazia
+      for (let b = 0; b < batches.length; b++) {
+        setProgress(`Importando lote ${b + 1} de ${batches.length}...`);
+        const r = await importMutation.mutateAsync({
+          declarations: batches[b],
+          collaborators: b === 0 ? Array.from(collaborators) : [],
+        });
+        totalImported += r.declarationsImported;
+        totalCollabs += r.collaboratorsImported;
+        if (r.errors?.length) allErrors.push(...r.errors);
+      }
+
+      setResult({ declarationsImported: totalImported, collaboratorsImported: totalCollabs, errors: allErrors });
+      if (totalImported > 0) toast.success(`✅ ${totalImported} declarações importadas!`);
+      else toast.error('Nenhuma declaração foi importada. Verifique os erros.');
+      if (allErrors.length) toast.error(`⚠️ ${allErrors.length} erro(s) durante importação`);
+
     } catch (err: any) {
-      toast.error('Erro ao processar arquivo: ' + (err?.message || 'Erro desconhecido'));
-      setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: [err?.message || 'Erro ao processar arquivo'] });
+      const msg = err?.message || 'Erro desconhecido';
+      toast.error('Erro ao processar arquivo: ' + msg);
+      setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: [msg] });
     } finally {
       setIsImporting(false);
+      setProgress('');
       const input = document.getElementById('file-input') as HTMLInputElement;
       if (input) input.value = '';
     }
@@ -179,13 +170,9 @@ export default function ImportPage() {
       const { declarations, commissions } = data.data;
       ['Março', 'Abril', 'Maio'].forEach(month => {
         const rows = (declarations[month as keyof typeof declarations] || []).map((d: any) => ({
-          'Colaborador': d.collaborator,
-          'Cliente': d.cliente,
-          'CPF': d.cpfCliente || '',
-          'Valor Recebido': d.valorRecebido / 100,
-          'Tipo': d.clienteType,
-          'Comissão': d.comissao / 100,
-          'Status': d.statusPagamento,
+          'Colaborador': d.collaborator, 'Cliente': d.cliente, 'CPF': d.cpfCliente || '',
+          'Valor Recebido': d.valorRecebido / 100, 'Tipo': d.clienteType,
+          'Comissão': d.comissao / 100, 'Status': d.statusPagamento,
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), month);
       });
@@ -210,7 +197,6 @@ export default function ImportPage() {
         <p className="text-sm text-gray-500 mt-1">Gerencie seus dados através de planilhas Excel</p>
       </div>
 
-      {/* Info Banner */}
       <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex gap-3">
         <Info className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
         <div>
@@ -221,7 +207,6 @@ export default function ImportPage() {
         </div>
       </div>
 
-      {/* Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {/* Import */}
         <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm flex flex-col items-center text-center">
@@ -235,7 +220,9 @@ export default function ImportPage() {
             htmlFor="file-input"
             className={`flex items-center gap-2 px-6 py-3 rounded-lg font-medium text-white transition-colors cursor-pointer w-full justify-center ${isImporting ? 'bg-gray-400 cursor-not-allowed' : 'bg-[#1a7a40] hover:bg-[#155f32]'}`}
           >
-            {isImporting ? <><Loader2 className="w-4 h-4 animate-spin" /> Importando...</> : <><Upload className="w-4 h-4" /> Selecionar Arquivo</>}
+            {isImporting
+              ? <><Loader2 className="w-4 h-4 animate-spin" /> {progress || 'Importando...'}</>
+              : <><Upload className="w-4 h-4" /> Selecionar Arquivo</>}
           </label>
 
           {result && (
