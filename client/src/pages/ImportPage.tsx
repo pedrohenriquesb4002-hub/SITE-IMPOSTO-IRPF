@@ -25,20 +25,40 @@ export default function ImportPage() {
     setResult(null);
 
     try {
+<<<<<<< HEAD
       const arrayBuffer = await file.arrayBuffer();
       const workbook = XLSX.read(arrayBuffer, { type: 'array' });
 
       const declarations: any[] = [];
       const collaborators = new Set<string>();
 
+=======
+      // Ler arquivo Excel
+      const arrayBuffer = await file.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+
+      // Extrair dados das abas
+      const declarations: any[] = [];
+      const collaborators = new Set<string>();
+
+      // Processar abas de meses
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
       ['Março', 'Abril', 'Maio'].forEach(month => {
         const sheet = workbook.Sheets[month];
         if (sheet) {
           const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[];
+<<<<<<< HEAD
 
           let headerRowIndex = -1;
           let headerRow: any[] | null = null;
 
+=======
+          
+          // Encontrar a linha de cabeçalho automaticamente
+          let headerRowIndex = -1;
+          let headerRow: any[] | null = null;
+          
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           for (let i = 0; i < Math.min(5, data.length); i++) {
             const row = data[i];
             if (row && row.some((cell: any) => cell?.toString().toLowerCase().includes('colaborador'))) {
@@ -47,6 +67,7 @@ export default function ImportPage() {
               break;
             }
           }
+<<<<<<< HEAD
 
           if (headerRow && headerRowIndex >= 0) {
             const colIndices = {
@@ -55,34 +76,71 @@ export default function ImportPage() {
               cliente: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'cliente'),
               valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor') && h?.toString().toLowerCase().includes('recebido')),
               tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'tipo'),
+=======
+          
+          if (headerRow && headerRowIndex >= 0) {
+            // Mapear índices das colunas
+            const colIndices = {
+              colaborador: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('colaborador')),
+              cpf: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('cpf')),
+              cliente: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('cliente') && !h?.toString().toLowerCase().includes('tipo')),
+              valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor') && h?.toString().toLowerCase().includes('recebido')),
+              tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('tipo')),
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
               comissao: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('comiss')),
               status: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('status')),
             };
 
+<<<<<<< HEAD
+=======
+            // Processar linhas de dados (começa após o cabeçalho)
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
             for (let i = headerRowIndex + 1; i < data.length; i++) {
               const row = data[i];
               if (!row || !row[colIndices.colaborador]) break;
 
+<<<<<<< HEAD
               const normalizeName = (name: string) => {
                 if (!name) return '';
                 return name.toLowerCase().split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+=======
+              // Função para normalizar nomes (primeira letra maiúscula, resto minúsculo)
+              const normalizeName = (name: string) => {
+                if (!name) return '';
+                return name
+                  .toLowerCase()
+                  .split(' ')
+                  .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                  .join(' ');
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
               };
 
               const colaborador = row[colIndices.colaborador]?.toString().trim();
               const cpfCliente = row[colIndices.cpf]?.toString().trim() || '';
               const clienteRaw = row[colIndices.cliente]?.toString().trim() || '';
               const cliente = normalizeName(clienteRaw);
+<<<<<<< HEAD
 
               const valorRaw = row[colIndices.valor]?.toString() || '0';
               const valorCleaned = valorRaw.replace(/R\$\s*/g, '').replace(/\./g, '').replace(',', '.').trim();
               const valorRecebido = parseFloat(valorCleaned) || 0;
 
+=======
+              const valorRecebido = parseFloat(row[colIndices.valor]?.toString() || '0');
+              
+              // Normalizar clienteType
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
               let clienteTypeRaw = row[colIndices.tipo]?.toString().trim() || 'Diversos';
               let clienteType = 'Diversos';
               if (clienteTypeRaw.toLowerCase().includes('sócio') || clienteTypeRaw.toLowerCase().includes('socio')) {
                 clienteType = 'Sócio';
               }
+<<<<<<< HEAD
 
+=======
+              
+              // Normalizar statusPagamento
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
               let statusPagamentoRaw = row[colIndices.status]?.toString().trim() || 'AGUARDANDO';
               let statusPagamento = 'AGUARDANDO';
               if (statusPagamentoRaw.toUpperCase().includes('PAGO')) {
@@ -92,7 +150,14 @@ export default function ImportPage() {
               }
 
               if (colaborador && cliente) {
+<<<<<<< HEAD
                 const valorEmCentavos = Math.round(valorRecebido * 100);
+=======
+                // Converter valor para centavos
+                const valorEmCentavos = Math.round(valorRecebido * 100);
+
+                // NÃO enviar comissão - será calculada automaticamente no servidor
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
                 declarations.push({
                   month,
                   collaborator: colaborador,
@@ -102,6 +167,10 @@ export default function ImportPage() {
                   clienteType,
                   statusPagamento: ['PAGO', 'AGUARDANDO', 'DOAÇÃO'].includes(statusPagamento) ? statusPagamento : 'AGUARDANDO',
                 });
+<<<<<<< HEAD
+=======
+
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
                 collaborators.add(colaborador);
               }
             }
@@ -109,6 +178,10 @@ export default function ImportPage() {
         }
       });
 
+<<<<<<< HEAD
+=======
+      // Processar aba de Comissões para extrair colaboradores adicionais
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
       const commissionsSheet = workbook.Sheets['Comissoes'];
       if (commissionsSheet) {
         const data = XLSX.utils.sheet_to_json(commissionsSheet, { header: 1 }) as any[];
@@ -122,6 +195,10 @@ export default function ImportPage() {
         }
       }
 
+<<<<<<< HEAD
+=======
+      // Enviar dados para o servidor
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
       const importResult = await importMutation.mutateAsync({
         declarations,
         collaborators: Array.from(collaborators),
@@ -136,6 +213,10 @@ export default function ImportPage() {
       if (importResult.declarationsImported > 0) {
         toast.success(`✅ ${importResult.declarationsImported} declarações importadas com sucesso!`);
       }
+<<<<<<< HEAD
+=======
+
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
       if (importResult.errors && importResult.errors.length > 0) {
         toast.error(`⚠️ ${importResult.errors.length} erro(s) durante a importação`);
       }
@@ -162,6 +243,10 @@ export default function ImportPage() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
+<<<<<<< HEAD
+=======
+          {/* Upload Area */}
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           <div className="border-2 border-dashed border-border rounded-lg p-8 text-center hover:bg-accent/50 transition-colors">
             <input
               type="file"
@@ -178,6 +263,10 @@ export default function ImportPage() {
             </label>
           </div>
 
+<<<<<<< HEAD
+=======
+          {/* Loading State */}
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           {isLoading && (
             <div className="flex items-center justify-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -185,6 +274,10 @@ export default function ImportPage() {
             </div>
           )}
 
+<<<<<<< HEAD
+=======
+          {/* Results */}
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           {result && (
             <div className="space-y-4">
               {result.declarationsImported > 0 && (
@@ -192,9 +285,19 @@ export default function ImportPage() {
                   <CheckCircle2 className="h-5 w-5 text-green-600 mt-0.5 flex-shrink-0" />
                   <div>
                     <p className="font-semibold text-green-900">Importação Bem-sucedida!</p>
+<<<<<<< HEAD
                     <p className="text-sm text-green-800">{result.declarationsImported} declaração(ões) importada(s)</p>
                     {result.collaboratorsImported > 0 && (
                       <p className="text-sm text-green-800">{result.collaboratorsImported} colaborador(es) adicionado(s)</p>
+=======
+                    <p className="text-sm text-green-800">
+                      {result.declarationsImported} declaração(ões) importada(s)
+                    </p>
+                    {result.collaboratorsImported > 0 && (
+                      <p className="text-sm text-green-800">
+                        {result.collaboratorsImported} colaborador(es) adicionado(s)
+                      </p>
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
                     )}
                   </div>
                 </div>
@@ -206,7 +309,13 @@ export default function ImportPage() {
                   <div>
                     <p className="font-semibold text-red-900">Erros na Importação</p>
                     {result.errors.map((error, idx) => (
+<<<<<<< HEAD
                       <p key={idx} className="text-sm text-red-800">• {error}</p>
+=======
+                      <p key={idx} className="text-sm text-red-800">
+                        • {error}
+                      </p>
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
                     ))}
                   </div>
                 </div>
@@ -214,6 +323,10 @@ export default function ImportPage() {
             </div>
           )}
 
+<<<<<<< HEAD
+=======
+          {/* Info Box */}
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
           <Card className="bg-blue-50 border-blue-200">
             <CardHeader>
               <CardTitle className="text-base">Formato esperado do Excel</CardTitle>
@@ -222,9 +335,16 @@ export default function ImportPage() {
               <p>Sua planilha deve conter:</p>
               <ul className="list-disc list-inside space-y-1 text-muted-foreground">
                 <li><strong>Abas por mês:</strong> Março, Abril, Maio</li>
+<<<<<<< HEAD
                 <li><strong>Colunas necessárias:</strong> Colaborador, CPF, Cliente, Valor Recebido, Tipo, Status</li>
                 <li><strong>Tipo:</strong> "Sócio" ou "Diversos"</li>
                 <li><strong>Status:</strong> "PAGO", "AGUARDANDO" ou "DOAÇÃO"</li>
+=======
+                <li><strong>Colunas necessárias:</strong> Colaborador, CPF Cliente, Cliente, Valor Recebido, Tipo, Comissão, Status</li>
+                <li><strong>Tipo:</strong> "Sócio" ou "Diversos"</li>
+                <li><strong>Status:</strong> "PAGO", "AGUARDANDO" ou "DOAÇÃO"</li>
+                <li><strong>Comissão:</strong> Valor já calculado (não será recalculado)</li>
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
               </ul>
             </CardContent>
           </Card>
@@ -232,4 +352,8 @@ export default function ImportPage() {
       </Card>
     </div>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
