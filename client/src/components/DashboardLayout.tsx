@@ -1,19 +1,18 @@
-import { useState, useEffect, useRef, CSSProperties } from "react";
 import { useLocation } from "wouter";
 import { useIsMobile } from "@/hooks/useMobile";
+import { useTheme } from "@/contexts/ThemeContext";
 import {
   FileText, DollarSign, Settings, Users, Upload, Percent,
-  LogOut, Moon, Sun, ChevronLeft, LayoutGrid, Calendar
+  LogOut, Moon, Sun, ChevronLeft, LayoutGrid, Calendar, LayoutDashboard
 } from "lucide-react";
 
-const SIDEBAR_WIDTH_KEY = "sidebar-width";
 const DEFAULT_WIDTH = 260;
 
 const menuGroups = [
   {
     label: "IRPF",
     items: [
-      { label: "IRPF", path: "/resumo", icon: FileText },
+      { label: "Resumo", path: "/resumo", icon: LayoutDashboard },
       { label: "Março", path: "/declaracoes/marco", indent: true },
       { label: "Abril", path: "/declaracoes/abril", indent: true },
       { label: "Maio", path: "/declaracoes/maio", indent: true },
@@ -22,7 +21,7 @@ const menuGroups = [
   {
     label: null,
     items: [
-      { label: "ITR", path: "/itr", icon: LayoutGrid },
+      { label: "ITR", path: "/itr", icon: Calendar },
       { label: "Comissões", path: "/comissoes", icon: DollarSign },
       { label: "Quotas", path: "/cotas", icon: Percent },
       { label: "Colaboradores", path: "/colaboradores", icon: Users },
@@ -32,23 +31,21 @@ const menuGroups = [
   },
 ];
 
+import { useState } from "react";
+
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [location, setLocation] = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const [darkMode, setDarkMode] = useState(false);
-  const isMobile = useIsMobile();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isMobile = useIsMobile();
+  const { theme, toggleTheme, switchable } = useTheme();
+  const isDark = theme === "dark";
 
   const isActive = (path: string) => location === path;
 
-  const sidebarBg = "bg-[#1a3a2a]";
-  const activeBg = "bg-[#e85d1a]";
-  const hoverBg = "hover:bg-[#254d38]";
-  const textColor = "text-white";
-
   const Sidebar = () => (
     <div
-      className={`${sidebarBg} ${textColor} flex flex-col h-screen transition-all duration-300`}
+      className="bg-[#1a3a2a] text-white flex flex-col h-screen transition-all duration-300"
       style={{ width: collapsed ? 64 : DEFAULT_WIDTH }}
     >
       {/* Header */}
@@ -61,7 +58,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         )}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className={`p-1.5 rounded-lg ${hoverBg} transition-colors ml-auto`}
+          className="p-1.5 rounded-lg hover:bg-[#254d38] transition-colors ml-auto"
         >
           <ChevronLeft className={`w-4 h-4 transition-transform ${collapsed ? "rotate-180" : ""}`} />
         </button>
@@ -81,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   key={item.path}
                   onClick={() => { setLocation(item.path); setMobileOpen(false); }}
                   className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors mb-0.5
-                    ${active ? activeBg + " text-white" : hoverBg + " text-green-100"}
+                    ${active ? "bg-[#e85d1a] text-white" : "hover:bg-[#254d38] text-green-100"}
                     ${indent && !collapsed ? "pl-8" : ""}
                   `}
                 >
@@ -98,15 +95,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Footer */}
       <div className="border-t border-[#254d38] p-3 space-y-1">
+        {switchable && toggleTheme && (
+          <button
+            onClick={toggleTheme}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-[#254d38] text-green-100 transition-colors"
+          >
+            {isDark ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
+            {!collapsed && <span>{isDark ? "Modo Claro" : "Modo Escuro"}</span>}
+          </button>
+        )}
         <button
-          onClick={() => setDarkMode(!darkMode)}
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm ${hoverBg} text-green-100 transition-colors`}
-        >
-          {darkMode ? <Sun className="w-4 h-4 shrink-0" /> : <Moon className="w-4 h-4 shrink-0" />}
-          {!collapsed && <span>Modo Escuro</span>}
-        </button>
-        <button
-          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm ${hoverBg} text-green-100 transition-colors`}
+          className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm hover:bg-[#254d38] text-green-100 transition-colors"
         >
           <LogOut className="w-4 h-4 shrink-0" />
           {!collapsed && <span>Sair</span>}
@@ -143,7 +142,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex-1 bg-black/40" onClick={() => setMobileOpen(false)} />
           </div>
         )}
-        <main className="flex-1 overflow-auto bg-gray-50 p-4">{children}</main>
+        <main className="flex-1 overflow-auto bg-background p-4">{children}</main>
       </div>
     );
   }
@@ -153,7 +152,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div className="shrink-0 h-full overflow-y-auto">
         <Sidebar />
       </div>
-      <main className="flex-1 overflow-auto bg-gray-50 p-6">{children}</main>
+      <main className="flex-1 overflow-auto bg-background p-6">{children}</main>
     </div>
   );
 }

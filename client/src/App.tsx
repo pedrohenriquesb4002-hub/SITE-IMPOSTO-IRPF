@@ -12,6 +12,7 @@ import SummaryPage from "./pages/SummaryPage";
 import CollaboratorsPage from "./pages/CollaboratorsPage";
 import ImportPage from "./pages/ImportPage";
 import QuotasPage from "./pages/QuotasPage";
+import ITRPage from "./pages/ITRPage";
 
 function Router() {
   return (
@@ -20,6 +21,7 @@ function Router() {
         <Route path={"/"} component={SummaryPage} />
         <Route path={"/resumo"} component={SummaryPage} />
         <Route path={"/declaracoes/:month"} component={DeclarationsPage} />
+        <Route path={"/itr"} component={ITRPage} />
         <Route path={"/comissoes"} component={CommissionsPage} />
         <Route path={"/configuracoes"} component={SettingsPage} />
         <Route path={"/colaboradores"} component={CollaboratorsPage} />
@@ -36,7 +38,8 @@ function Router() {
 function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider defaultTheme="light">
+      {/* switchable=true habilita o toggle de dark mode */}
+      <ThemeProvider defaultTheme="light" switchable={true}>
         <TooltipProvider>
           <Toaster />
           <Router />

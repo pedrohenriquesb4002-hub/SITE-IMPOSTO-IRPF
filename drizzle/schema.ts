@@ -2,6 +2,7 @@ import { pgTable, serial, text, integer, timestamp, varchar, pgEnum, index, uniq
 
 // Definição dos Enums para o PostgreSQL
 export const monthEnum = pgEnum('month', ['Março', 'Abril', 'Maio']);
+export const itrMonthEnum = pgEnum('itrMonth', ['Agosto', 'Setembro']);
 export const clienteTypeEnum = pgEnum('clienteType', ['Sócio', 'Diversos']);
 export const statusPagamentoEnum = pgEnum('statusPagamento', ['PAGO', 'AGUARDANDO', 'DOAÇÃO']);
 export const roleEnum = pgEnum('role', ['user', 'admin']);
@@ -26,7 +27,7 @@ export type User = typeof users.$inferSelect;
 export type InsertUser = typeof users.$inferInsert;
 
 /**
- * Tabela de Declarações
+ * Tabela de Declarações IRPF
  */
 export const declarations = pgTable('declarations', {
   id: serial('id').primaryKey(),
@@ -49,6 +50,31 @@ export const declarations = pgTable('declarations', {
 
 export type Declaration = typeof declarations.$inferSelect;
 export type InsertDeclaration = typeof declarations.$inferInsert;
+
+/**
+ * Tabela de Declarações ITR
+ */
+export const itrDeclarations = pgTable('itrDeclarations', {
+  id: serial('id').primaryKey(),
+  userId: integer('userId').notNull().references(() => users.id),
+  month: itrMonthEnum('month').notNull(),
+  collaborator: varchar('collaborator', { length: 255 }).notNull(),
+  cpfCliente: varchar('cpfCliente', { length: 20 }),
+  cliente: varchar('cliente', { length: 255 }).notNull(),
+  valorRecebido: integer('valorRecebido').notNull(),
+  clienteType: clienteTypeEnum('clienteType').notNull(),
+  comissao: integer('comissao'),
+  statusPagamento: statusPagamentoEnum('statusPagamento').notNull(),
+  createdAt: timestamp('createdAt').defaultNow().notNull(),
+  updatedAt: timestamp('updatedAt').defaultNow().notNull(),
+}, (table) => ({
+  idxItrUserMonth: index('idx_itr_user_month').on(table.userId, table.month),
+  idxItrUserCollaborator: index('idx_itr_user_collaborator').on(table.userId, table.collaborator),
+  idxItrUserStatus: index('idx_itr_user_status').on(table.userId, table.statusPagamento),
+}));
+
+export type ItrDeclaration = typeof itrDeclarations.$inferSelect;
+export type InsertItrDeclaration = typeof itrDeclarations.$inferInsert;
 
 /**
  * Tabela de Colaboradores

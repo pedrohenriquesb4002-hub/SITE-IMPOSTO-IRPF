@@ -3,8 +3,8 @@ import { getSessionCookieOptions } from "./_core/cookies";
 import { systemRouter } from "./_core/systemRouter";
 import { publicProcedure, router } from "./_core/trpc";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
-import { declarations } from "../drizzle/schema";
+import { eq, and } from "drizzle-orm";
+import { declarations, itrDeclarations } from "../drizzle/schema";
 import { getDb } from "./db";
 import { calculateCommission } from "./commissionCalculator";
 import { getAllMonthsCommissions, getTotalCommissions } from "./commissionsByMonth";
@@ -28,6 +28,55 @@ import {
 } from "./db";
 
 const PUBLIC_USER_ID = 1;
+
+// ─── Helpers ITR ────────────────────────────────────────────────────────────
+
+async function getItrDeclarationsByMonth(userId: number, month: 'Agosto' | 'Setembro') {
+  const db = await getDb();
+  if (!db) return [];
+  return db.select().from(itrDeclarations)
+    .where(and(eq(itrDeclarations.userId, userId), eq(itrDeclarations.month, month)));
+}
+
+async function createItrDeclaration(data: {
+  userId: number;
+  month: 'Agosto' | 'Setembro';
+  collaborator: string;
+  cpfCliente?: string;
+  cliente: string;
+  valorRecebido: number;
+  clienteType: 'Sócio' | 'Diversos';
+  comissao?: number;
+  statusPagamento: 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO';
+}) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const [result] = await db.insert(itrDeclarations).values({
+    ...data,
+    cpfCliente: data.cpfCliente ?? null,
+    comissao: data.comissao ?? null,
+  }).returning();
+  return result;
+}
+
+async function updateItrDeclaration(id: number, data: Partial<typeof itrDeclarations.$inferInsert>) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  const [result] = await db.update(itrDeclarations)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(itrDeclarations.id, id))
+    .returning();
+  return result;
+}
+
+async function deleteItrDeclaration(id: number) {
+  const db = await getDb();
+  if (!db) throw new Error('DB not available');
+  await db.delete(itrDeclarations).where(eq(itrDeclarations.id, id));
+  return { success: true };
+}
+
+// ─── Router ─────────────────────────────────────────────────────────────────
 
 export const appRouter = router({
   system: systemRouter,
@@ -143,6 +192,69 @@ export const appRouter = router({
     }),
   }),
 
+  // ─── ITR ──────────────────────────────────────────────────────────────────
+  itr: router({
+    listByMonth: publicProcedure
+      .input(z.enum(['Agosto', 'Setembro']))
+      .query(async ({ input }: any) => {
+        return getItrDeclarationsByMonth(PUBLIC_USER_ID, input);
+      }),
+
+    create: publicProcedure
+      .input(z.object({
+        month: z.enum(['Agosto', 'Setembro']),
+        collaborator: z.string().min(1),
+        cpfCliente: z.string().optional(),
+        cliente: z.string().min(1),
+        valorRecebido: z.number().int().nonnegative(),
+        clienteType: z.enum(['Sócio', 'Diversos']),
+        statusPagamento: z.enum(['PAGO', 'AGUARDANDO', 'DOAÇÃO']),
+      }))
+      .mutation(async ({ input }: any) => {
+        const comissao = calculateCommission(input.valorRecebido, input.clienteType, input.statusPagamento);
+        return createItrDeclaration({
+          userId: PUBLIC_USER_ID,
+          month: input.month,
+          collaborator: input.collaborator,
+          cpfCliente: input.cpfCliente,
+          cliente: input.cliente,
+          valorRecebido: input.valorRecebido,
+          clienteType: input.clienteType,
+          comissao,
+          statusPagamento: input.statusPagamento,
+        });
+      }),
+
+    update: publicProcedure
+      .input(z.object({
+        id: z.number().int(),
+        collaborator: z.string().min(1).optional(),
+        cpfCliente: z.string().optional(),
+        cliente: z.string().min(1).optional(),
+        valorRecebido: z.number().int().nonnegative().optional(),
+        clienteType: z.enum(['Sócio', 'Diversos']).optional(),
+        statusPagamento: z.enum(['PAGO', 'AGUARDANDO', 'DOAÇÃO']).optional(),
+      }))
+      .mutation(async ({ input }: any) => {
+        const { id, ...data } = input;
+        const db = await getDb();
+        if (db && (data.valorRecebido !== undefined || data.clienteType !== undefined || data.statusPagamento !== undefined)) {
+          const result = await db.select().from(itrDeclarations).where(eq(itrDeclarations.id, id)).limit(1);
+          const existing = result[0];
+          data.comissao = calculateCommission(
+            data.valorRecebido ?? existing?.valorRecebido ?? 0,
+            data.clienteType ?? existing?.clienteType ?? 'Diversos',
+            data.statusPagamento ?? existing?.statusPagamento ?? 'AGUARDANDO'
+          );
+        }
+        return updateItrDeclaration(id, data);
+      }),
+
+    delete: publicProcedure
+      .input(z.number().int())
+      .mutation(async ({ input }: any) => deleteItrDeclaration(input)),
+  }),
+
   collaborators: router({
     list: publicProcedure.query(async () => getCollaborators(PUBLIC_USER_ID)),
     add: publicProcedure.input(z.object({ name: z.string().min(1) })).mutation(async ({ input }: any) => addCollaborator(PUBLIC_USER_ID, input.name)),
@@ -242,7 +354,6 @@ export const appRouter = router({
           totalQuantity: decls.length,
           totalValue: decls.reduce((s, d) => s + (d.valorRecebido || 0), 0),
           totalCommission: decls.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0),
-          
         };
       }));
     }),
