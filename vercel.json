@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "npx pnpm install && npx vite build",
+  "buildCommand": "pnpm install && pnpm run build",
   "outputDirectory": "dist/public",
   "framework": null,
   "rewrites": [
