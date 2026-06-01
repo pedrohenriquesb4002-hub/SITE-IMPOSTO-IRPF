@@ -1,18 +1,22 @@
+
 {
   "version": 2,
-  "installCommand": "npm install --legacy-peer-deps",
-<<<<<<< HEAD
-  "buildCommand": "npm run build",
+  "buildCommand": "npx pnpm install && npx vite build",
   "outputDirectory": "dist/public",
   "framework": null,
+  "functions": {
+    "api/index.ts": {
+      "runtime": "nodejs20.x"
+    }
+  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index.js" },
-=======
-  "buildCommand": "npx vite build",
-  "outputDirectory": "dist/public",
-  "framework": "vite",
-  "rewrites": [
->>>>>>> cd22aba42c4351ff0d2b6b85e12a3c34e4122aa4
-    { "source": "/(.*)", "destination": "/index.html" }
+    {
+      "source": "/api/trpc/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
   ]
 }
