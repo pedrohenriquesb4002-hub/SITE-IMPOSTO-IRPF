@@ -106,7 +106,8 @@ export async function getCollaborators(userId: number) {
 export async function addCollaborator(userId: number, name: string) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  return db.insert(collaborators).values({ userId, name });
+  const result = await db.insert(collaborators).values({ userId, name }).returning();
+  return result[0];
 }
 
 export async function removeCollaborator(id: number) {
@@ -138,7 +139,8 @@ export async function updateSettings(userId: number, data: any) {
 export async function createQuota(data: InsertQuota) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  return db.insert(quotas).values(data);
+  const result = await db.insert(quotas).values(data).returning();
+  return result[0];
 }
 
 export async function getQuotasByUser(userId: number) {
@@ -158,19 +160,22 @@ export async function getQuotasByCollaborator(userId: number, collaboratorName: 
 export async function updateQuota(id: number, data: any) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  return db.update(quotas).set(data).where(eq(quotas.id, id));
+  const result = await db.update(quotas).set(data).where(eq(quotas.id, id)).returning();
+  return result[0];
 }
 
 export async function deleteQuota(id: number) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  return db.delete(quotas).where(eq(quotas.id, id));
+  await db.delete(quotas).where(eq(quotas.id, id));
+  return { success: true };
 }
 
 export async function updateCotasEnviadas(quotaId: number, cotasEnviadas: number) {
   const db = await getDb();
   if (!db) throw new Error('Database not available');
-  return db.update(quotas).set({ cotasEnviadas }).where(eq(quotas.id, quotaId));
+  const result = await db.update(quotas).set({ cotasEnviadas }).where(eq(quotas.id, quotaId)).returning();
+  return result[0];
 }
 
 // Commission calculations
