@@ -1,0 +1,1 @@
+ALTER TABLE `declarations` DROP INDEX `unique_decl`;
