@@ -4,7 +4,7 @@
   "outputDirectory": "dist/public",
   "framework": null,
   "functions": {
-    "api/bundle.js": {
+    "api/index.js": {
       "maxDuration": 30,
       "memory": 1024
     }
@@ -12,7 +12,7 @@
   "rewrites": [
     {
       "source": "/api/trpc/:path*",
-      "destination": "/api/bundle.js"
+      "destination": "/api/index.js"
     },
     {
       "source": "/(.*)",
