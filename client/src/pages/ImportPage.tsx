@@ -30,6 +30,37 @@ function chunk<T>(arr: T[], size: number): T[][] {
   return result;
 }
 
+// Normaliza texto para comparação: minúsculo, sem acentos, sem espaços extras
+const norm = (s: any) =>
+  (s ?? '').toString().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .trim();
+
+// Encontra índice de coluna pelo cabeçalho com correspondência flexível
+function findCol(header: any[], ...patterns: string[]): number {
+  for (const pat of patterns) {
+    const n = norm(pat);
+    const idx = header.findIndex((h: any) => norm(h).includes(n));
+    if (idx >= 0) return idx;
+  }
+  return -1;
+}
+
+// Mapeia valor de status para enum esperado pelo backend
+function parseStatus(raw: any): 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' {
+  const s = norm(raw);
+  if (s.includes('pago') || s === 'p') return 'PAGO';
+  if (s.includes('doa')) return 'DOAÇÃO';
+  return 'AGUARDANDO';
+}
+
+// Mapeia tipo de cliente
+function parseTipo(raw: any): 'Sócio' | 'Diversos' {
+  const s = norm(raw);
+  if (s.includes('soci') || s.includes('sócio') || s === 's') return 'Sócio';
+  return 'Diversos';
+}
+
 export default function ImportPage() {
   const [isImporting, setIsImporting] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -48,71 +79,125 @@ export default function ImportPage() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const workbook = XLSX.read(arrayBuffer, { type: 'array', cellDates: true });
       const declarations: any[] = [];
       const collaborators = new Set<string>();
 
-      (['Março', 'Abril', 'Maio'] as const).forEach(month => {
-        const sheet = workbook.Sheets[month];
-        if (!sheet) return;
-        const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      // Tenta encontrar abas pelo nome (ignora acentos e maiúsculas)
+      const findSheet = (name: string) => {
+        const n = norm(name);
+        const key = workbook.SheetNames.find(k => norm(k) === n || norm(k).includes(n));
+        return key ? workbook.Sheets[key] : undefined;
+      };
 
+      const months: { label: 'Março' | 'Abril' | 'Maio'; aliases: string[] }[] = [
+        { label: 'Março', aliases: ['março', 'marco', 'mar'] },
+        { label: 'Abril', aliases: ['abril', 'abr'] },
+        { label: 'Maio',  aliases: ['maio', 'mai'] },
+      ];
+
+      for (const { label, aliases } of months) {
+        let sheet: XLSX.WorkSheet | undefined;
+        for (const alias of aliases) {
+          sheet = findSheet(alias);
+          if (sheet) break;
+        }
+        if (!sheet) continue;
+
+        // Tenta sheet_to_json com header:1 (array de arrays)
+        const data = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' }) as any[][];
+        if (!data.length) continue;
+
+        // Encontra linha de cabeçalho (até linha 10)
         let headerRowIndex = -1;
-        let headerRow: any[] | null = null;
-        for (let i = 0; i < Math.min(5, data.length); i++) {
-          if (data[i]?.some((c: any) => c?.toString().toLowerCase().includes('colaborador'))) {
-            headerRowIndex = i; headerRow = data[i]; break;
+        let headerRow: any[] = [];
+        for (let i = 0; i < Math.min(10, data.length); i++) {
+          const row = data[i];
+          if (!row) continue;
+          // Considera cabeçalho se contiver ao menos 2 células não-vazias
+          const nonEmpty = row.filter((c: any) => c !== '' && c != null);
+          if (nonEmpty.length >= 2) {
+            const rowNorm = row.map(norm).join(' ');
+            // Prefere linha que menciona colaborador, cliente, cpf ou valor
+            if (
+              rowNorm.includes('colab') ||
+              rowNorm.includes('cliente') ||
+              rowNorm.includes('cpf') ||
+              rowNorm.includes('valor') ||
+              rowNorm.includes('nome')
+            ) {
+              headerRowIndex = i;
+              headerRow = row;
+              break;
+            }
           }
         }
-        if (!headerRow || headerRowIndex < 0) return;
+
+        // Se não achou header com palavras-chave, usa a 1ª linha com dados
+        if (headerRowIndex < 0) {
+          for (let i = 0; i < Math.min(5, data.length); i++) {
+            const row = data[i];
+            if (row && row.filter((c: any) => c !== '' && c != null).length >= 2) {
+              headerRowIndex = i;
+              headerRow = row;
+              break;
+            }
+          }
+        }
+        if (headerRowIndex < 0) continue;
 
         const idx = {
-          colaborador: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('colaborador')),
-          cliente: headerRow.findIndex((h: any) => {
-            const s = h?.toString().toLowerCase().trim();
-            return s === 'cliente' || s === 'nome' || s === 'nome do cliente';
-          }),
-          cpf: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'cpf'),
-          valor: headerRow.findIndex((h: any) => h?.toString().toLowerCase().includes('valor')),
-          tipo: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'tipo'),
-          status: headerRow.findIndex((h: any) => h?.toString().toLowerCase().trim() === 'status'),
+          colaborador: findCol(headerRow, 'colaborador', 'colab', 'responsavel', 'contador'),
+          cliente:     findCol(headerRow, 'cliente', 'nome do cliente', 'nome', 'contribuinte'),
+          cpf:         findCol(headerRow, 'cpf', 'cpf/cnpj', 'documento'),
+          valor:       findCol(headerRow, 'valor recebido', 'valor', 'vl recebido', 'vl', 'honorario'),
+          tipo:        findCol(headerRow, 'tipo', 'tipo cliente', 'categoria'),
+          status:      findCol(headerRow, 'status', 'status pagamento', 'pagamento', 'situacao'),
         };
 
-        if (idx.cliente < 0) idx.cliente = 1;
+        // Fallback: se não achou colaborador, tenta coluna 0
+        if (idx.colaborador < 0) idx.colaborador = 0;
+        if (idx.cliente < 0) idx.cliente = idx.colaborador === 0 ? 1 : 0;
 
         for (let i = headerRowIndex + 1; i < data.length; i++) {
           const row = data[i];
-          if (!row || row.every((v: any) => v === null || v === undefined || v === '')) continue;
+          if (!row) continue;
+          if (row.every((v: any) => v === null || v === undefined || v === '')) continue;
 
-          const colaborador = idx.colaborador >= 0 ? row[idx.colaborador]?.toString().trim() : null;
+          const colaborador = idx.colaborador >= 0
+            ? row[idx.colaborador]?.toString().trim()
+            : null;
           if (!colaborador) continue;
 
           const clienteRaw = idx.cliente >= 0 ? row[idx.cliente]?.toString().trim() : '';
-          const cpfRaw = idx.cpf >= 0 && row[idx.cpf] != null ? row[idx.cpf].toString().trim() : '';
+          const cpfRaw = idx.cpf >= 0 && row[idx.cpf] != null
+            ? row[idx.cpf].toString().trim()
+            : '';
 
-          let cliente = normalizeName(clienteRaw) || normalizeName(cpfRaw) || `Cliente_${i}`;
-          let cpfCliente = cpfRaw;
+          const cliente = normalizeName(clienteRaw) || normalizeName(cpfRaw) || `Cliente_${i}`;
+          const cpfCliente = cpfRaw;
 
           const valorEmCentavos = idx.valor >= 0 ? parseValorBRL(row[idx.valor]) : 0;
+          const clienteType = idx.tipo >= 0 ? parseTipo(row[idx.tipo]) : 'Diversos';
+          const statusPagamento = idx.status >= 0 ? parseStatus(row[idx.status]) : 'AGUARDANDO';
 
-          const tipoRaw = idx.tipo >= 0 ? row[idx.tipo]?.toString().trim() || '' : '';
-          const clienteType: 'Sócio' | 'Diversos' =
-            tipoRaw.toLowerCase().includes('sócio') || tipoRaw.toLowerCase().includes('socio') ? 'Sócio' : 'Diversos';
-
-          const statusRaw = idx.status >= 0 ? row[idx.status]?.toString().trim().toUpperCase() || '' : '';
-          const statusPagamento: 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' =
-            statusRaw.includes('PAGO') ? 'PAGO' :
-            statusRaw.includes('DOA') ? 'DOAÇÃO' : 'AGUARDANDO';
-
-          declarations.push({ month, collaborator: colaborador, cpfCliente, cliente, valorRecebido: valorEmCentavos, clienteType, statusPagamento });
+          declarations.push({
+            month: label,
+            collaborator: colaborador,
+            cpfCliente,
+            cliente,
+            valorRecebido: valorEmCentavos,
+            clienteType,
+            statusPagamento,
+          });
           collaborators.add(colaborador);
         }
-      });
+      }
 
-      // Colaboradores de outras abas
-      const cotasSheet = workbook.Sheets['Cotas'];
+      // Colaboradores da aba Cotas (se existir)
+      const cotasSheet = findSheet('cotas');
       if (cotasSheet) {
-        const data = XLSX.utils.sheet_to_json(cotasSheet, { header: 1 }) as any[][];
+        const data = XLSX.utils.sheet_to_json(cotasSheet, { header: 1, defval: '' }) as any[][];
         for (let i = 1; i < data.length; i++) {
           const name = data[i]?.[0]?.toString().trim();
           if (name) collaborators.add(name);
@@ -120,8 +205,8 @@ export default function ImportPage() {
       }
 
       if (!declarations.length) {
-        toast.error('Nenhuma declaração encontrada nas abas Março, Abril ou Maio.');
-        setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Nenhuma declaração encontrada'] });
+        toast.error('Nenhuma declaração encontrada. Verifique se a planilha tem abas chamadas Março, Abril ou Maio com dados.');
+        setResult({ declarationsImported: 0, collaboratorsImported: 0, errors: ['Nenhuma declaração encontrada. Abas disponíveis: ' + workbook.SheetNames.join(', ')] });
         return;
       }
 
@@ -146,7 +231,7 @@ export default function ImportPage() {
 
       setResult({ declarationsImported: totalImported, collaboratorsImported: totalCollabs, errors: allErrors });
       if (totalImported > 0) toast.success(`✅ ${totalImported} declarações importadas!`);
-      else toast.error('Nenhuma declaração foi importada. Verifique os erros.');
+      else toast.error('Nenhuma declaração foi importada. Verifique os erros abaixo.');
       if (allErrors.length) toast.error(`⚠️ ${allErrors.length} erro(s) durante importação`);
 
     } catch (err: any) {
@@ -172,7 +257,7 @@ export default function ImportPage() {
         const rows = (declarations[month as keyof typeof declarations] || []).map((d: any) => ({
           'Colaborador': d.collaborator, 'Cliente': d.cliente, 'CPF': d.cpfCliente || '',
           'Valor Recebido': d.valorRecebido / 100, 'Tipo': d.clienteType,
-          'Comissão': d.comissao / 100, 'Status': d.statusPagamento,
+          'Comissão': (d.comissao ?? 0) / 100, 'Status': d.statusPagamento,
         }));
         XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), month);
       });
@@ -200,9 +285,10 @@ export default function ImportPage() {
       <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex gap-3">
         <Info className="w-5 h-5 text-green-700 shrink-0 mt-0.5" />
         <div>
-          <p className="font-semibold text-green-800">Importante</p>
+          <p className="font-semibold text-green-800">Formato aceito</p>
           <p className="text-sm text-green-700 mt-0.5">
-            A planilha deve ter abas chamadas <strong>Março</strong>, <strong>Abril</strong> e/ou <strong>Maio</strong> com colunas: Colaborador, Cliente, CPF, Valor Recebido, Tipo, Status.
+            A planilha deve ter abas chamadas <strong>Março</strong>, <strong>Abril</strong> e/ou <strong>Maio</strong>.
+            As colunas podem ter os nomes: <strong>Colaborador, Cliente, CPF, Valor Recebido, Tipo, Status</strong> — o sistema reconhece variações automaticamente.
           </p>
         </div>
       </div>

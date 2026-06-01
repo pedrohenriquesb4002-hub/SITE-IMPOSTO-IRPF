@@ -20,7 +20,16 @@ export default function CollaboratorsPage() {
       await addMutation.mutateAsync({ name: newName.trim() });
       setNewName(''); refetch();
       toast.success('Colaborador adicionado!');
-    } catch { toast.error('Este colaborador já existe ou ocorreu um erro'); }
+    } catch (err: any) {
+      const msg: string = err?.message || '';
+      if (msg.toLowerCase().includes('já existe') || msg.toLowerCase().includes('conflict')) {
+        toast.error(`Colaborador "${newName.trim()}" já está cadastrado.`);
+      } else if (msg.toLowerCase().includes('banco') || msg.toLowerCase().includes('database') || msg.toLowerCase().includes('unavailable')) {
+        toast.error('Erro de conexão com o banco de dados. Verifique as configurações do servidor.');
+      } else {
+        toast.error('Erro ao adicionar colaborador: ' + (msg || 'Tente novamente.'));
+      }
+    }
   };
 
   const handleRemove = async (id: number) => {
