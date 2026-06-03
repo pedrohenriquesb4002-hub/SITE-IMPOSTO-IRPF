@@ -1,1 +1,0 @@
-ALTER TABLE `settings` MODIFY COLUMN `valorFixoSocio` int NOT NULL DEFAULT 500;

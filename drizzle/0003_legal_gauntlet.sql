@@ -1,1 +1,0 @@
-ALTER TABLE `declarations` ADD CONSTRAINT `unique_decl` UNIQUE(`userId`,`month`,`collaborator`,`cliente`,`valorRecebido`);
