@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock, User, Eye, EyeOff, AlertCircle } from 'lucide-react'
-import { api, useAuthStore } from '../lib/store'
+import { api, useAuthStore } from '../../lib/store'
 
 export default function LoginPage() {
   const navigate = useNavigate()
