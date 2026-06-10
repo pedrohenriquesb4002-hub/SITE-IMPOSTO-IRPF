@@ -1,21 +1,24 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Plus, Trash2, Search, Edit, ChevronLeft, ChevronRight, Save, X } from 'lucide-react'
+import { Plus, Trash2, Search, Edit, ChevronLeft, ChevronRight, Save, X, User } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, type Declaration } from '../../lib/store'
+import { api, type Declaration, type Collaborator } from '../../lib/store'
 import { formatCPF } from '../../lib/utils'
 
 interface IRPFPageProps {
   month: string
 }
 
+const IRPF_MONTHS = ['Março', 'Abril', 'Maio']
+
 export default function IRPFPage({ month }: IRPFPageProps) {
   const [declaracoes, setDeclaracoes] = useState<Declaration[]>([])
   const [loading, setLoading] = useState(true)
-  const [colaboradores, setColaboradores] = useState<string[]>([])
+  const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [formData, setFormData] = useState({
     colaborador: '', cliente: '', cpf: '', valor: '',
     tipo: 'Sócio' as 'Sócio' | 'Diversos',
     status: 'AGUARDANDO' as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
+    paymentMonth: month,
   })
   const [filterColaborador, setFilterColaborador] = useState('')
   const [filterCliente, setFilterCliente] = useState('')
@@ -32,7 +35,7 @@ export default function IRPFPage({ month }: IRPFPageProps) {
         api.collaborators.list(),
       ])
       setDeclaracoes(decls)
-      setColaboradores(collabs.map((c) => c.name))
+      setColaboradores(collabs)
     } catch {
       toast.error('Erro ao carregar dados')
     } finally {
@@ -43,10 +46,14 @@ export default function IRPFPage({ month }: IRPFPageProps) {
   useEffect(() => { load() }, [load])
   useEffect(() => { setCurrentPage(1) }, [month])
 
+  // Foto do colaborador pelo nome
+  const getColabPhoto = (name: string) => {
+    return colaboradores.find(c => c.name === name)?.photo || null
+  }
+
   const handleAdd = async () => {
     if (!formData.colaborador || !formData.cliente || !formData.cpf || !formData.valor) {
-      toast.error('Preencha todos os campos')
-      return
+      toast.error('Preencha todos os campos'); return
     }
     try {
       const created = await api.declarations.create({
@@ -57,9 +64,10 @@ export default function IRPFPage({ month }: IRPFPageProps) {
         valorRecebido: Math.round(parseFloat(formData.valor) * 100),
         clienteType: formData.tipo,
         statusPagamento: formData.status,
+        paymentMonth: formData.status === 'PAGO' ? formData.paymentMonth : null,
       })
       setDeclaracoes((prev) => [...prev, created])
-      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO' })
+      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentMonth: month })
       toast.success('Declaração adicionada')
     } catch (err: unknown) {
       toast.error(err instanceof Error ? err.message : 'Erro ao adicionar')
@@ -96,6 +104,7 @@ export default function IRPFPage({ month }: IRPFPageProps) {
         valorRecebido: editFormData.valorRecebido,
         clienteType: editFormData.clienteType,
         statusPagamento: editFormData.statusPagamento,
+        paymentMonth: editFormData.statusPagamento === 'PAGO' ? (editFormData.paymentMonth || month) : null,
       })
       setDeclaracoes((prev) => prev.map((d) => (d.id === editingId ? updated : d)))
       setEditingId(null)
@@ -121,8 +130,16 @@ export default function IRPFPage({ month }: IRPFPageProps) {
     if (s === 'AGUARDANDO') return 'bg-warning/10 text-warning border-warning/20'
     return 'bg-primary/10 text-primary border-primary/20'
   }
-
   const statusLabel = (s: string) => ({ PAGO: 'Pago', AGUARDANDO: 'Aguardando', 'DOAÇÃO': 'Doação' }[s] || s)
+
+  // Avatar component
+  const Avatar = ({ name, photo }: { name: string; photo: string | null }) => (
+    <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-border flex items-center justify-center bg-gradient-to-br from-primary/30 to-primary/10">
+      {photo
+        ? <img src={photo} alt={name} className="w-full h-full object-cover" />
+        : <span className="text-xs font-bold text-primary">{name.charAt(0).toUpperCase()}</span>}
+    </div>
+  )
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
@@ -177,65 +194,66 @@ export default function IRPFPage({ month }: IRPFPageProps) {
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
               >
                 <option value="">Selecione...</option>
-                {colaboradores.map((c) => <option key={c} value={c}>{c}</option>)}
+                {colaboradores.map((c) => (
+                  <option key={c.id} value={c.name}>{c.name}</option>
+                ))}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Nome do Cliente</label>
-              <input
-                type="text" value={formData.cliente}
+              <input type="text" value={formData.cliente}
                 onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-                placeholder="Nome do cliente"
-              />
+                placeholder="Nome do cliente" />
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">CPF</label>
-              <input
-                type="text" value={formData.cpf}
+              <input type="text" value={formData.cpf}
                 onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-                placeholder="000.000.000-00"
-                maxLength={14}
-              />
+                placeholder="000.000.000-00" maxLength={14} />
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Valor (R$)</label>
-              <input
-                type="number" value={formData.valor}
+              <input type="number" value={formData.valor}
                 onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-                placeholder="0,00" min="0" step="0.01"
-              />
+                placeholder="0,00" min="0" step="0.01" />
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Tipo</label>
-              <select
-                value={formData.tipo}
+              <select value={formData.tipo}
                 onChange={(e) => setFormData({ ...formData, tipo: e.target.value as 'Sócio' | 'Diversos' })}
-                className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-              >
+                className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
                 <option value="Sócio">Sócio</option>
                 <option value="Diversos">Diversos</option>
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Status</label>
-              <select
-                value={formData.status}
+              <select value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
-                className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-              >
-                <option value="PAGO">Pago</option>
+                className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
                 <option value="AGUARDANDO">Aguardando</option>
+                <option value="PAGO">Pago</option>
                 <option value="DOAÇÃO">Doação</option>
               </select>
             </div>
+            {formData.status === 'PAGO' && (
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-2">
+                  Mês do Pagamento <span className="text-primary">(comissão entra neste mês)</span>
+                </label>
+                <select value={formData.paymentMonth}
+                  onChange={(e) => setFormData({ ...formData, paymentMonth: e.target.value })}
+                  className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
+                  {IRPF_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            )}
           </div>
-          <button
-            onClick={handleAdd}
-            className="mt-6 px-8 py-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 font-semibold flex items-center gap-2"
-          >
+          <button onClick={handleAdd}
+            className="mt-6 px-8 py-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 font-semibold flex items-center gap-2">
             <Plus className="w-4 h-4" /> Adicionar
           </button>
         </div>
@@ -244,25 +262,21 @@ export default function IRPFPage({ month }: IRPFPageProps) {
         <div className="flex gap-4 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text" value={filterColaborador}
+            <input type="text" value={filterColaborador}
               onChange={(e) => setFilterColaborador(e.target.value)}
               placeholder="Filtrar colaborador..."
-              className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-            />
+              className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground" />
           </div>
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              type="text" value={filterCliente}
+            <input type="text" value={filterCliente}
               onChange={(e) => setFilterCliente(e.target.value)}
               placeholder="Filtrar cliente..."
-              className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-            />
+              className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground" />
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table — BARRA DE ROLAGEM INTERNA (ATT 1) */}
         <div className="bg-card border-2 border-border rounded-2xl overflow-hidden shadow-xl">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -273,102 +287,119 @@ export default function IRPFPage({ month }: IRPFPageProps) {
               Carregando...
             </div>
           ) : (
+            /* max-h com overflow-y-auto = barra de rolagem INTERNA */
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted border-b border-border">
-                  <tr>
-                    {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Comissão', 'Ações'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {paginated.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração encontrada</td></tr>
-                  ) : paginated.map((d) => (
-                    <tr key={d.id} className="hover:bg-muted/30 transition-colors">
-                      {editingId === d.id && editFormData ? (
-                        <>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.collaborator}
-                              onChange={(e) => setEditFormData({ ...editFormData, collaborator: e.target.value })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                            >
-                              {colaboradores.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <input value={editFormData.cliente}
-                              onChange={(e) => setEditFormData({ ...editFormData, cliente: e.target.value })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                            />
-                          </td>
-                          <td className="px-4 py-2">
-                            <input value={editFormData.cpfCliente || ''}
-                              onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPF(e.target.value) })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                              maxLength={14}
-                            />
-                          </td>
-                          <td className="px-4 py-2">
-                            <input type="number"
-                              value={editFormData.valorRecebido / 100}
-                              onChange={(e) => setEditFormData({ ...editFormData, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
-                              className="w-24 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                            />
-                          </td>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.clienteType}
-                              onChange={(e) => setEditFormData({ ...editFormData, clienteType: e.target.value as 'Sócio' | 'Diversos' })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                            >
-                              <option value="Sócio">Sócio</option>
-                              <option value="Diversos">Diversos</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.statusPagamento}
-                              onChange={(e) => setEditFormData({ ...editFormData, statusPagamento: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
-                            >
-                              <option value="PAGO">Pago</option>
-                              <option value="AGUARDANDO">Aguardando</option>
-                              <option value="DOAÇÃO">Doação</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-2 text-muted-foreground text-xs">—</td>
-                          <td className="px-4 py-2">
-                            <div className="flex gap-1">
-                              <button onClick={handleSaveEdit} className="p-1.5 bg-success/10 text-success rounded hover:bg-success/20"><Save className="w-3.5 h-3.5" /></button>
-                              <button onClick={handleCancelEdit} className="p-1.5 bg-muted text-muted-foreground rounded hover:bg-muted/80"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{d.collaborator}</td>
-                          <td className="px-4 py-3 text-foreground">{d.cliente}</td>
-                          <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.cpfCliente}</td>
-                          <td className="px-4 py-3 text-foreground font-medium">R$ {((d.valorRecebido || 0) / 100).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">{d.clienteType}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
-                          </td>
-                          <td className="px-4 py-3 text-success font-medium">R$ {((d.comissao || 0) / 100).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-1">
-                              <button onClick={() => handleEdit(d)} className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"><Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDelete(d.id)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </>
-                      )}
+              <div className="max-h-[500px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted border-b border-border sticky top-0 z-10">
+                    <tr>
+                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {paginated.length === 0 ? (
+                      <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração encontrada</td></tr>
+                    ) : paginated.map((d) => (
+                      <tr key={d.id} className="hover:bg-muted/30 transition-colors">
+                        {editingId === d.id && editFormData ? (
+                          <>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.collaborator}
+                                onChange={(e) => setEditFormData({ ...editFormData, collaborator: e.target.value })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                {colaboradores.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input value={editFormData.cliente}
+                                onChange={(e) => setEditFormData({ ...editFormData, cliente: e.target.value })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input value={editFormData.cpfCliente || ''}
+                                onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPF(e.target.value) })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground"
+                                maxLength={14} />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input type="number"
+                                value={editFormData.valorRecebido / 100}
+                                onChange={(e) => setEditFormData({ ...editFormData, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
+                                className="w-24 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.clienteType}
+                                onChange={(e) => setEditFormData({ ...editFormData, clienteType: e.target.value as 'Sócio' | 'Diversos' })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                <option value="Sócio">Sócio</option>
+                                <option value="Diversos">Diversos</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.statusPagamento}
+                                onChange={(e) => setEditFormData({ ...editFormData, statusPagamento: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                <option value="AGUARDANDO">Aguardando</option>
+                                <option value="PAGO">Pago</option>
+                                <option value="DOAÇÃO">Doação</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              {editFormData.statusPagamento === 'PAGO' && (
+                                <select value={editFormData.paymentMonth || month}
+                                  onChange={(e) => setEditFormData({ ...editFormData, paymentMonth: e.target.value })}
+                                  className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                  {IRPF_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground text-xs">—</td>
+                            <td className="px-4 py-2">
+                              <div className="flex gap-1">
+                                <button onClick={handleSaveEdit} className="p-1.5 bg-success/10 text-success rounded hover:bg-success/20"><Save className="w-3.5 h-3.5" /></button>
+                                <button onClick={handleCancelEdit} className="p-1.5 bg-muted text-muted-foreground rounded hover:bg-muted/80"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            {/* FOTO DO COLABORADOR NA LINHA (FEATURE FOTO) */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Avatar name={d.collaborator} photo={getColabPhoto(d.collaborator)} />
+                                <span className="font-medium text-foreground whitespace-nowrap">{d.collaborator}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-foreground">{d.cliente}</td>
+                            <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.cpfCliente}</td>
+                            <td className="px-4 py-3 text-foreground font-medium">R$ {((d.valorRecebido || 0) / 100).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">{d.clienteType}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
+                            </td>
+                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                              {d.statusPagamento === 'PAGO' && d.paymentMonth && d.paymentMonth !== d.month
+                                ? <span className="text-accent font-medium">{d.paymentMonth}</span>
+                                : d.statusPagamento === 'PAGO' ? d.month : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-success font-medium">R$ {((d.comissao || 0) / 100).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-1">
+                                <button onClick={() => handleEdit(d)} className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"><Edit className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleDelete(d.id)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -380,12 +411,12 @@ export default function IRPFPage({ month }: IRPFPageProps) {
               </p>
               <div className="flex gap-2">
                 <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="px-3 py-2 text-sm font-medium">{currentPage} / {totalPages}</span>
                 <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 transition-colors">
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>

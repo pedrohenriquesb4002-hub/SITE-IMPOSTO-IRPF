@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { User, Mail, Image as ImageIcon, Moon, Sun, Save, Percent, DollarSign } from 'lucide-react'
+import { User, Mail, Image as ImageIcon, Moon, Sun, Save } from 'lucide-react'
 import { toast } from 'sonner'
-import { api } from '../../lib/store'
+import { api, useAuthStore } from '../../lib/store'
 
 interface ConfiguracoesPageProps {
   darkMode: boolean
@@ -10,22 +10,20 @@ interface ConfiguracoesPageProps {
 }
 
 export default function ConfiguracoesPage({ darkMode, toggleDarkMode, onUpdateProfile }: ConfiguracoesPageProps) {
-  const [profileImage, setProfileImage] = useState<string | null>(null)
-  const [profileName, setProfileName] = useState('Administrador')
-  const [profileEmail, setProfileEmail] = useState('')
-  const [percentualDiversos, setPercentualDiversos] = useState(10)
-  const [valorFixoSocio, setValorFixoSocio] = useState(5)
+  const { user, updateUser } = useAuthStore()
+  const [profileImage, setProfileImage] = useState<string | null>(user?.photo || null)
+  const [profileName, setProfileName] = useState(user?.name || 'Administrador')
+  const [profileEmail, setProfileEmail] = useState(user?.email || '')
   const [savingProfile, setSavingProfile] = useState(false)
-  const [savingSettings, setSavingSettings] = useState(false)
 
+  // Carrega sempre do store (que vem do banco na autenticação)
   useEffect(() => {
-    api.settings.get()
-      .then((s) => {
-        setPercentualDiversos(s.percentualDiversos)
-        setValorFixoSocio(s.valorFixoSocio / 100)
-      })
-      .catch(() => {})
-  }, [])
+    if (user) {
+      setProfileName(user.name || '')
+      setProfileEmail(user.email || '')
+      setProfileImage(user.photo || null)
+    }
+  }, [user])
 
   const handleImageUpload = () => {
     const input = document.createElement('input')
@@ -34,6 +32,7 @@ export default function ConfiguracoesPage({ darkMode, toggleDarkMode, onUpdatePr
     input.onchange = (e: Event) => {
       const file = (e.target as HTMLInputElement).files?.[0]
       if (!file) return
+      if (file.size > 5 * 1024 * 1024) { toast.error('Imagem deve ter no máximo 5MB'); return }
       const reader = new FileReader()
       reader.onload = (ev) => { setProfileImage(ev.target?.result as string) }
       reader.readAsDataURL(file)
@@ -42,24 +41,20 @@ export default function ConfiguracoesPage({ darkMode, toggleDarkMode, onUpdatePr
   }
 
   const handleSaveProfile = async () => {
+    if (!profileName.trim()) { toast.error('Digite um nome'); return }
     setSavingProfile(true)
     try {
-      if (onUpdateProfile) onUpdateProfile(profileName, profileImage)
-      toast.success('Perfil atualizado')
-    } finally { setSavingProfile(false) }
-  }
-
-  const handleSaveCommissionSettings = async () => {
-    setSavingSettings(true)
-    try {
-      await api.settings.update({
-        percentualDiversos,
-        valorFixoSocio: Math.round(valorFixoSocio * 100),
+      const updated = await api.updateProfile({
+        name: profileName.trim(),
+        email: profileEmail.trim() || undefined,
+        photo: profileImage,
       })
-      toast.success('Configurações de comissão salvas')
+      updateUser({ name: updated.name, email: updated.email, photo: updated.photo })
+      if (onUpdateProfile) onUpdateProfile(updated.name, updated.photo || null)
+      toast.success('Perfil salvo com sucesso!')
     } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Erro')
-    } finally { setSavingSettings(false) }
+      toast.error(err instanceof Error ? err.message : 'Erro ao salvar perfil')
+    } finally { setSavingProfile(false) }
   }
 
   return (
@@ -87,13 +82,19 @@ export default function ConfiguracoesPage({ darkMode, toggleDarkMode, onUpdatePr
                 <ImageIcon className="w-4 h-4" /> Alterar Foto
               </button>
               <p className="text-sm text-muted-foreground mt-2">JPG, PNG ou GIF (máx. 5MB)</p>
+              <p className="text-xs text-muted-foreground mt-1 text-primary">
+                ✓ Sua foto aparece no lançamento das declarações
+              </p>
             </div>
           </div>
         </div>
 
         {/* Profile Info */}
         <div className="bg-card border-2 border-border rounded-2xl p-6 shadow-xl">
-          <h3 className="text-base font-semibold text-foreground mb-6">Informações de Perfil</h3>
+          <h3 className="text-base font-semibold text-foreground mb-2">Informações de Perfil</h3>
+          <p className="text-sm text-muted-foreground mb-6">
+            Ao alterar seu nome aqui, ele será atualizado automaticamente na aba Colaboradores.
+          </p>
           <div className="space-y-4">
             <div>
               <label className="block text-xs font-medium text-foreground mb-2 flex items-center gap-2">
@@ -118,58 +119,6 @@ export default function ConfiguracoesPage({ darkMode, toggleDarkMode, onUpdatePr
             className="mt-6 px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg font-semibold flex items-center gap-2 disabled:opacity-50">
             <Save className="w-4 h-4" />
             {savingProfile ? 'Salvando...' : 'Salvar Perfil'}
-          </button>
-        </div>
-
-        {/* Commission Settings */}
-        <div className="bg-card border-2 border-border rounded-2xl p-6 shadow-xl">
-          <h3 className="text-base font-semibold text-foreground mb-2">Configurações de Comissão</h3>
-          <p className="text-sm text-muted-foreground mb-6">Define como as comissões são calculadas automaticamente</p>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="bg-muted/30 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Percent className="w-4 h-4 text-primary" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Percentual Diversos</p>
-                  <p className="text-xs text-muted-foreground">% do valor recebido</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <input type="number" value={percentualDiversos}
-                  onChange={(e) => setPercentualDiversos(Number(e.target.value))}
-                  className="w-24 px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground text-center font-bold"
-                  min="0" max="100" />
-                <span className="text-muted-foreground text-sm">%</span>
-              </div>
-            </div>
-            <div className="bg-muted/30 rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-accent/10 flex items-center justify-center">
-                  <DollarSign className="w-4 h-4 text-accent" />
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">Valor Fixo Sócio</p>
-                  <p className="text-xs text-muted-foreground">R$ por declaração</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-muted-foreground text-sm">R$</span>
-                <input type="number" value={valorFixoSocio}
-                  onChange={(e) => setValorFixoSocio(Number(e.target.value))}
-                  className="w-24 px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground text-center font-bold"
-                  min="0" step="0.01" />
-              </div>
-            </div>
-          </div>
-          <div className="mt-4 p-4 bg-primary/5 border border-primary/20 rounded-lg text-sm text-muted-foreground">
-            <strong className="text-foreground">Regras atuais:</strong> Sócio = R$ {valorFixoSocio.toFixed(2)} fixo | Diversos = {percentualDiversos}% do valor | Doação = R$ 0,00
-          </div>
-          <button onClick={handleSaveCommissionSettings} disabled={savingSettings}
-            className="mt-4 px-6 py-2.5 bg-accent text-accent-foreground rounded-xl hover:opacity-90 transition-all shadow-lg font-semibold flex items-center gap-2 disabled:opacity-50">
-            <Save className="w-4 h-4" />
-            {savingSettings ? 'Salvando...' : 'Salvar Configurações'}
           </button>
         </div>
 

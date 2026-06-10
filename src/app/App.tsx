@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
-import { FileText, DollarSign, Receipt, Upload, Settings, Moon, Sun, ChevronLeft, ChevronRight, Calendar, User, LogOut, Users } from 'lucide-react'
+import { FileText, DollarSign, Receipt, Upload, Settings, Moon, Sun, ChevronLeft, ChevronRight, Calendar, User, LogOut, Users, BarChart2, Tag } from 'lucide-react'
 import { Toaster } from 'sonner'
 import LoginPage from './pages/LoginPage'
 import IRPFPage from './components/IRPFPage'
@@ -10,6 +10,8 @@ import QuotasPage from './components/QuotasPage'
 import ImportExportPage from './components/ImportExportPage'
 import ConfiguracoesPage from './components/ConfiguracoesPage'
 import ColaboradoresPage from './components/ColaboradoresPage'
+import DashboardPage from './components/DashboardPage'
+import PrecificacoesPage from './components/PrecificacoesPage'
 import { useAuthStore } from '../lib/store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -20,16 +22,12 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function Dashboard() {
   const navigate = useNavigate()
-  const { user, clearAuth } = useAuthStore()
-  const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('darkMode') === 'true'
-  })
+  const { user, clearAuth, updateUser } = useAuthStore()
+  const [darkMode, setDarkMode] = useState(() => localStorage.getItem('darkMode') === 'true')
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
-  const [currentPage, setCurrentPage] = useState('irpf')
+  const [currentPage, setCurrentPage] = useState('dashboard')
   const [irpfMonth, setIrpfMonth] = useState('Março')
   const [itrMonth, setItrMonth] = useState('Agosto')
-  const [userName, setUserName] = useState(user?.name || 'Usuário')
-  const [userPhoto, setUserPhoto] = useState<string | null>(null)
 
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark')
@@ -45,9 +43,11 @@ function Dashboard() {
   }
 
   const menuItems = [
+    { id: 'dashboard', label: 'Dashboard', icon: BarChart2 },
     { id: 'irpf', label: 'IRPF', icon: FileText, hasSubmenu: true },
     { id: 'itr', label: 'ITR', icon: Calendar, hasSubmenu: true },
     { id: 'comissoes', label: 'Comissões', icon: DollarSign },
+    { id: 'precificacoes', label: 'Precificações', icon: Tag },
     { id: 'quotas', label: 'Quotas', icon: Receipt },
     { id: 'colaboradores', label: 'Colaboradores', icon: Users },
     { id: 'import-export', label: 'Importar/Exportar', icon: Upload },
@@ -67,9 +67,11 @@ function Dashboard() {
 
   const renderContent = () => {
     switch (currentPage) {
+      case 'dashboard': return <DashboardPage />
       case 'irpf': return <IRPFPage month={irpfMonth} />
       case 'itr': return <ITRPage month={itrMonth} />
       case 'comissoes': return <ComissoesPage />
+      case 'precificacoes': return <PrecificacoesPage />
       case 'quotas': return <QuotasPage />
       case 'colaboradores': return <ColaboradoresPage />
       case 'import-export': return <ImportExportPage />
@@ -79,12 +81,11 @@ function Dashboard() {
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
             onUpdateProfile={(name, photo) => {
-              setUserName(name)
-              setUserPhoto(photo)
+              updateUser({ name, photo })
             }}
           />
         )
-      default: return <IRPFPage month={irpfMonth} />
+      default: return <DashboardPage />
     }
   }
 
@@ -92,7 +93,6 @@ function Dashboard() {
     <div className="size-full flex bg-background min-h-screen">
       {/* Sidebar */}
       <div className={`${sidebarCollapsed ? 'w-20' : 'w-72'} bg-sidebar transition-all duration-300 flex flex-col shadow-2xl flex-shrink-0`}>
-        {/* Header */}
         <div className="px-6 py-6 border-b border-sidebar-border/50 flex items-center justify-between">
           {!sidebarCollapsed && (
             <div>
@@ -110,7 +110,6 @@ function Dashboard() {
           </button>
         </div>
 
-        {/* Menu */}
         <nav className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
           {menuItems.map((item) => (
             <div key={item.id}>
@@ -169,13 +168,13 @@ function Dashboard() {
         <div className="p-4 border-t border-sidebar-border/50 space-y-3">
           <div className={`flex items-center gap-3 px-2 py-2 rounded-xl bg-sidebar-accent/30 ${sidebarCollapsed ? 'justify-center' : ''}`}>
             <div className="w-10 h-10 rounded-full bg-gradient-to-br from-accent to-primary flex items-center justify-center overflow-hidden flex-shrink-0 ring-2 ring-accent/50">
-              {userPhoto
-                ? <img src={userPhoto} alt="Profile" className="w-full h-full object-cover" />
+              {user?.photo
+                ? <img src={user.photo} alt="Profile" className="w-full h-full object-cover" />
                 : <User className="w-5 h-5 text-white" />}
             </div>
             {!sidebarCollapsed && (
               <div className="flex-1 min-w-0">
-                <p className="text-sm font-semibold text-sidebar-foreground truncate">{userName}</p>
+                <p className="text-sm font-semibold text-sidebar-foreground truncate">{user?.name || 'Usuário'}</p>
                 <p className="text-xs text-sidebar-foreground/60">● Online</p>
               </div>
             )}

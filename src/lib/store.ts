@@ -7,6 +7,7 @@ export interface User {
   name: string
   email?: string
   role: 'user' | 'admin'
+  photo?: string | null
 }
 
 interface AuthState {
@@ -15,6 +16,7 @@ interface AuthState {
   setAuth: (token: string, user: User) => void
   clearAuth: () => void
   isAuthenticated: () => boolean
+  updateUser: (updates: Partial<User>) => void
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -25,12 +27,12 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (token, user) => set({ token, user }),
       clearAuth: () => set({ token: null, user: null }),
       isAuthenticated: () => !!get().token,
+      updateUser: (updates) => set((s) => ({ user: s.user ? { ...s.user, ...updates } : s.user })),
     }),
     { name: 'irpf-auth' }
   )
 )
 
-// ─── API Client ──────────────────────────────────────────────
 export async function apiRequest<T = unknown>(
   path: string,
   options: RequestInit = {}
@@ -55,7 +57,6 @@ export async function apiRequest<T = unknown>(
 }
 
 export const api = {
-  // Auth
   login: (username: string, password: string) =>
     apiRequest<{ token: string; user: User }>('/auth/login', {
       method: 'POST',
@@ -67,8 +68,9 @@ export const api = {
       body: JSON.stringify({ username, password, name }),
     }),
   me: () => apiRequest<User>('/auth/me'),
+  updateProfile: (data: { name?: string; email?: string; photo?: string | null }) =>
+    apiRequest<User>('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
 
-  // Declarations IRPF
   declarations: {
     list: (month: string) => apiRequest<Declaration[]>(`/declarations?month=${encodeURIComponent(month)}`),
     create: (data: Omit<Declaration, 'id' | 'createdAt' | 'updatedAt'>) =>
@@ -80,7 +82,6 @@ export const api = {
       apiRequest(`/declarations/all?month=${encodeURIComponent(month)}`, { method: 'DELETE' }),
   },
 
-  // Declarations ITR
   itr: {
     list: (month: string) => apiRequest<Declaration[]>(`/itr?month=${encodeURIComponent(month)}`),
     create: (data: Omit<Declaration, 'id' | 'createdAt' | 'updatedAt'>) =>
@@ -92,28 +93,26 @@ export const api = {
       apiRequest(`/itr/all?month=${encodeURIComponent(month)}`, { method: 'DELETE' }),
   },
 
-  // Collaborators
   collaborators: {
     list: () => apiRequest<Collaborator[]>('/collaborators'),
     add: (name: string) =>
       apiRequest<Collaborator>('/collaborators', { method: 'POST', body: JSON.stringify({ name }) }),
     remove: (id: number) => apiRequest(`/collaborators/${id}`, { method: 'DELETE' }),
+    updatePhoto: (id: number, photo: string | null) =>
+      apiRequest<Collaborator>(`/collaborators/${id}`, { method: 'PUT', body: JSON.stringify({ photo }) }),
   },
 
-  // Settings
   settings: {
     get: () => apiRequest<Settings>('/settings'),
     update: (data: Partial<Settings>) =>
       apiRequest<Settings>('/settings', { method: 'PUT', body: JSON.stringify(data) }),
   },
 
-  // Commissions
   commissions: {
     all: () => apiRequest<CommissionData[]>('/commissions'),
     itr: () => apiRequest<CommissionData[]>('/commissions/itr'),
   },
 
-  // Quotas
   quotas: {
     list: () => apiRequest<Quota[]>('/quotas'),
     create: (data: Omit<Quota, 'id' | 'createdAt' | 'updatedAt'>) =>
@@ -123,7 +122,8 @@ export const api = {
     delete: (id: number) => apiRequest(`/quotas/${id}`, { method: 'DELETE' }),
   },
 
-  // Import/Export
+  dashboard: () => apiRequest<DashboardData>('/dashboard'),
+
   importExcel: (data: { declarations: unknown[]; collaborators: string[] }) =>
     apiRequest('/import', { method: 'POST', body: JSON.stringify(data) }),
   exportExcel: () => apiRequest('/export'),
@@ -133,6 +133,7 @@ export const api = {
 export interface Declaration {
   id: number
   month: string
+  paymentMonth?: string | null
   collaborator: string
   cpfCliente?: string
   cliente: string
@@ -147,17 +148,22 @@ export interface Declaration {
 export interface Collaborator {
   id: number
   name: string
+  photo?: string | null
   createdAt?: string
 }
 
 export interface Settings {
   percentualDiversos: number
   valorFixoSocio: number
+  percentualDiversosIRPF?: number
+  valorFixoSocioIRPF?: number
+  percentualDiversosITR?: number
+  valorFixoSocioITR?: number
 }
 
 export interface CommissionData {
   collaborator: string
-  months: Record<string, { vendas: number; recebido: number; comissao: number }>
+  months: Record<string, { vendas: number; recebido: number; comissao: number; aguardando?: number }>
 }
 
 export interface Quota {
@@ -169,4 +175,20 @@ export interface Quota {
   meioEnvio: string
   createdAt?: string
   updatedAt?: string
+}
+
+export interface DashboardData {
+  totalColaboradores: number
+  irpf: {
+    total: number; pago: number; aguardando: number
+    recebidoTotal: number; recebidoPago: number; comissaoTotal: number
+    byMonth: Record<string, { total: number; recebido: number; comissao: number }>
+  }
+  itr: {
+    total: number; pago: number; aguardando: number
+    recebidoTotal: number; recebidoPago: number; comissaoTotal: number
+    byMonth: Record<string, { total: number; recebido: number; comissao: number }>
+  }
+  topCollaboradores: { name: string; comissao: number; vendas: number }[]
+  settings: Settings
 }

@@ -1,17 +1,20 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Search, Edit, ChevronLeft, ChevronRight, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
-import { api, type Declaration } from '../../lib/store'
+import { api, type Declaration, type Collaborator } from '../../lib/store'
 import { formatCPF } from '../../lib/utils'
+
+const ITR_MONTHS = ['Agosto', 'Setembro']
 
 export default function ITRPage({ month }: { month: string }) {
   const [declaracoes, setDeclaracoes] = useState<Declaration[]>([])
   const [loading, setLoading] = useState(true)
-  const [colaboradores, setColaboradores] = useState<string[]>([])
+  const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [formData, setFormData] = useState({
     colaborador: '', cliente: '', cpf: '', valor: '',
     tipo: 'Sócio' as 'Sócio' | 'Diversos',
     status: 'AGUARDANDO' as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
+    paymentMonth: month,
   })
   const [filterColaborador, setFilterColaborador] = useState('')
   const [filterCliente, setFilterCliente] = useState('')
@@ -28,14 +31,18 @@ export default function ITRPage({ month }: { month: string }) {
         api.collaborators.list(),
       ])
       setDeclaracoes(decls)
-      setColaboradores(collabs.map((c) => c.name))
+      setColaboradores(collabs)
     } catch {
       toast.error('Erro ao carregar dados ITR')
     } finally { setLoading(false) }
   }, [month])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setCurrentPage(1) }, [month])
+  useEffect(() => { setCurrentPage(1); setFormData(f => ({ ...f, paymentMonth: month })) }, [month])
+
+  // Busca foto do colaborador pelo nome
+  const getColabPhoto = (name: string) =>
+    colaboradores.find(c => c.name === name)?.photo || null
 
   const handleAdd = async () => {
     if (!formData.colaborador || !formData.cliente || !formData.cpf || !formData.valor) {
@@ -50,9 +57,10 @@ export default function ITRPage({ month }: { month: string }) {
         valorRecebido: Math.round(parseFloat(formData.valor) * 100),
         clienteType: formData.tipo,
         statusPagamento: formData.status,
+        paymentMonth: formData.status === 'PAGO' ? formData.paymentMonth : null,
       })
       setDeclaracoes((prev) => [...prev, created])
-      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO' })
+      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentMonth: month })
       toast.success('Declaração ITR adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
@@ -81,6 +89,7 @@ export default function ITRPage({ month }: { month: string }) {
         valorRecebido: editFormData.valorRecebido,
         clienteType: editFormData.clienteType,
         statusPagamento: editFormData.statusPagamento,
+        paymentMonth: editFormData.statusPagamento === 'PAGO' ? (editFormData.paymentMonth || month) : null,
       })
       setDeclaracoes((p) => p.map((d) => (d.id === editingId ? updated : d)))
       setEditingId(null); setEditFormData(null)
@@ -105,23 +114,35 @@ export default function ITRPage({ month }: { month: string }) {
   }
   const statusLabel = (s: string) => ({ PAGO: 'Pago', AGUARDANDO: 'Aguardando', 'DOAÇÃO': 'Doação' }[s] || s)
 
+  // Avatar bolinha com foto ou inicial
+  const Avatar = ({ name, photo }: { name: string; photo: string | null }) => (
+    <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-border flex items-center justify-center bg-gradient-to-br from-accent/30 to-accent/10">
+      {photo
+        ? <img src={photo} alt={name} className="w-full h-full object-cover" />
+        : <span className="text-xs font-bold text-accent">{name.charAt(0).toUpperCase()}</span>}
+    </div>
+  )
+
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
       <div className="max-w-7xl mx-auto space-y-8">
+
+        {/* Header */}
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-3xl font-bold text-foreground tracking-tight">ITR — {month}</h2>
             <p className="text-sm text-muted-foreground mt-2 flex items-center gap-2">
-              <span className="w-2 h-2 bg-primary rounded-full animate-pulse"></span>
+              <span className="w-2 h-2 bg-accent rounded-full animate-pulse"></span>
               Lançamento de Declarações ITR
             </p>
           </div>
           <button onClick={handleDeleteAll}
-            className="px-5 py-2.5 bg-destructive text-destructive-foreground rounded-xl hover:shadow-lg transition-all text-sm font-semibold flex items-center gap-2">
+            className="px-5 py-2.5 bg-destructive text-destructive-foreground rounded-xl hover:shadow-lg hover:shadow-destructive/30 transition-all text-sm font-semibold flex items-center gap-2">
             <Trash2 className="w-4 h-4" /> Excluir Todas
           </button>
         </div>
 
+        {/* Summary */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-5 text-primary-foreground shadow-xl shadow-primary/20">
             <p className="text-xs font-bold uppercase tracking-wide opacity-80">Declarações ITR</p>
@@ -140,8 +161,8 @@ export default function ITRPage({ month }: { month: string }) {
         {/* Add Form */}
         <div className="bg-card border-2 border-border rounded-2xl p-8 shadow-xl">
           <div className="flex items-center gap-3 mb-6">
-            <div className="w-10 h-10 bg-primary/10 rounded-xl flex items-center justify-center">
-              <Plus className="w-5 h-5 text-primary" />
+            <div className="w-10 h-10 bg-accent/10 rounded-xl flex items-center justify-center">
+              <Plus className="w-5 h-5 text-accent" />
             </div>
             <h3 className="text-xl font-bold text-card-foreground">Nova Declaração ITR</h3>
           </div>
@@ -152,7 +173,7 @@ export default function ITRPage({ month }: { month: string }) {
                 onChange={(e) => setFormData({ ...formData, colaborador: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
                 <option value="">Selecione...</option>
-                {colaboradores.map((c) => <option key={c} value={c}>{c}</option>)}
+                {colaboradores.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -190,11 +211,24 @@ export default function ITRPage({ month }: { month: string }) {
               <select value={formData.status}
                 onChange={(e) => setFormData({ ...formData, status: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
-                <option value="PAGO">Pago</option>
                 <option value="AGUARDANDO">Aguardando</option>
+                <option value="PAGO">Pago</option>
                 <option value="DOAÇÃO">Doação</option>
               </select>
             </div>
+            {/* Campo mês do pagamento — aparece só quando PAGO */}
+            {formData.status === 'PAGO' && (
+              <div>
+                <label className="block text-xs font-medium text-foreground mb-2">
+                  Mês do Pagamento <span className="text-accent">(comissão entra neste mês)</span>
+                </label>
+                <select value={formData.paymentMonth}
+                  onChange={(e) => setFormData({ ...formData, paymentMonth: e.target.value })}
+                  className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
+                  {ITR_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+            )}
           </div>
           <button onClick={handleAdd}
             className="mt-6 px-8 py-3 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 font-semibold flex items-center gap-2">
@@ -218,7 +252,7 @@ export default function ITRPage({ month }: { month: string }) {
           </div>
         </div>
 
-        {/* Table */}
+        {/* Table com barra de rolagem interna */}
         <div className="bg-card border-2 border-border rounded-2xl overflow-hidden shadow-xl">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -230,106 +264,134 @@ export default function ITRPage({ month }: { month: string }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-muted border-b border-border">
-                  <tr>
-                    {['Colaborador','Cliente','CPF','Valor','Tipo','Status','Comissão','Ações'].map((h) => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {paginated.length === 0 ? (
-                    <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração ITR encontrada</td></tr>
-                  ) : paginated.map((d) => (
-                    <tr key={d.id} className="hover:bg-muted/30 transition-colors">
-                      {editingId === d.id && editFormData ? (
-                        <>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.collaborator}
-                              onChange={(e) => setEditFormData({ ...editFormData, collaborator: e.target.value })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
-                              {colaboradores.map((c) => <option key={c} value={c}>{c}</option>)}
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <input value={editFormData.cliente}
-                              onChange={(e) => setEditFormData({ ...editFormData, cliente: e.target.value })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
-                          </td>
-                          <td className="px-4 py-2">
-                            <input value={editFormData.cpfCliente || ''}
-                              onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPF(e.target.value) })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" maxLength={14} />
-                          </td>
-                          <td className="px-4 py-2">
-                            <input type="number" value={editFormData.valorRecebido / 100}
-                              onChange={(e) => setEditFormData({ ...editFormData, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
-                              className="w-24 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
-                          </td>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.clienteType}
-                              onChange={(e) => setEditFormData({ ...editFormData, clienteType: e.target.value as 'Sócio' | 'Diversos' })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
-                              <option value="Sócio">Sócio</option>
-                              <option value="Diversos">Diversos</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-2">
-                            <select value={editFormData.statusPagamento}
-                              onChange={(e) => setEditFormData({ ...editFormData, statusPagamento: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
-                              className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
-                              <option value="PAGO">Pago</option>
-                              <option value="AGUARDANDO">Aguardando</option>
-                              <option value="DOAÇÃO">Doação</option>
-                            </select>
-                          </td>
-                          <td className="px-4 py-2 text-muted-foreground text-xs">—</td>
-                          <td className="px-4 py-2">
-                            <div className="flex gap-1">
-                              <button onClick={handleSaveEdit} className="p-1.5 bg-success/10 text-success rounded hover:bg-success/20"><Save className="w-3.5 h-3.5" /></button>
-                              <button onClick={handleCancelEdit} className="p-1.5 bg-muted text-muted-foreground rounded hover:bg-muted/80"><X className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </>
-                      ) : (
-                        <>
-                          <td className="px-4 py-3 font-medium text-foreground whitespace-nowrap">{d.collaborator}</td>
-                          <td className="px-4 py-3 text-foreground">{d.cliente}</td>
-                          <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.cpfCliente}</td>
-                          <td className="px-4 py-3 text-foreground font-medium">R$ {((d.valorRecebido || 0) / 100).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <span className="px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">{d.clienteType}</span>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
-                          </td>
-                          <td className="px-4 py-3 text-success font-medium">R$ {((d.comissao || 0) / 100).toFixed(2)}</td>
-                          <td className="px-4 py-3">
-                            <div className="flex gap-1">
-                              <button onClick={() => handleEdit(d)} className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20"><Edit className="w-3.5 h-3.5" /></button>
-                              <button onClick={() => handleDelete(d.id)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20"><Trash2 className="w-3.5 h-3.5" /></button>
-                            </div>
-                          </td>
-                        </>
-                      )}
+              {/* max-h + overflow-y-auto = barra de rolagem interna da tabela */}
+              <div className="max-h-[500px] overflow-y-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-muted border-b border-border sticky top-0 z-10">
+                    <tr>
+                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map((h) => (
+                        <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {paginated.length === 0 ? (
+                      <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração ITR encontrada</td></tr>
+                    ) : paginated.map((d) => (
+                      <tr key={d.id} className="hover:bg-muted/30 transition-colors">
+                        {editingId === d.id && editFormData ? (
+                          <>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.collaborator}
+                                onChange={(e) => setEditFormData({ ...editFormData, collaborator: e.target.value })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                {colaboradores.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <input value={editFormData.cliente}
+                                onChange={(e) => setEditFormData({ ...editFormData, cliente: e.target.value })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input value={editFormData.cpfCliente || ''}
+                                onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPF(e.target.value) })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" maxLength={14} />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input type="number" value={editFormData.valorRecebido / 100}
+                                onChange={(e) => setEditFormData({ ...editFormData, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
+                                className="w-24 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.clienteType}
+                                onChange={(e) => setEditFormData({ ...editFormData, clienteType: e.target.value as 'Sócio' | 'Diversos' })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                <option value="Sócio">Sócio</option>
+                                <option value="Diversos">Diversos</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              <select value={editFormData.statusPagamento}
+                                onChange={(e) => setEditFormData({ ...editFormData, statusPagamento: e.target.value as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO' })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                <option value="AGUARDANDO">Aguardando</option>
+                                <option value="PAGO">Pago</option>
+                                <option value="DOAÇÃO">Doação</option>
+                              </select>
+                            </td>
+                            <td className="px-4 py-2">
+                              {editFormData.statusPagamento === 'PAGO' && (
+                                <select value={editFormData.paymentMonth || month}
+                                  onChange={(e) => setEditFormData({ ...editFormData, paymentMonth: e.target.value })}
+                                  className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
+                                  {ITR_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
+                                </select>
+                              )}
+                            </td>
+                            <td className="px-4 py-2 text-muted-foreground text-xs">—</td>
+                            <td className="px-4 py-2">
+                              <div className="flex gap-1">
+                                <button onClick={handleSaveEdit} className="p-1.5 bg-success/10 text-success rounded hover:bg-success/20"><Save className="w-3.5 h-3.5" /></button>
+                                <button onClick={handleCancelEdit} className="p-1.5 bg-muted text-muted-foreground rounded hover:bg-muted/80"><X className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            {/* Foto + nome do colaborador */}
+                            <td className="px-4 py-3">
+                              <div className="flex items-center gap-2">
+                                <Avatar name={d.collaborator} photo={getColabPhoto(d.collaborator)} />
+                                <span className="font-medium text-foreground whitespace-nowrap">{d.collaborator}</span>
+                              </div>
+                            </td>
+                            <td className="px-4 py-3 text-foreground">{d.cliente}</td>
+                            <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.cpfCliente}</td>
+                            <td className="px-4 py-3 text-foreground font-medium">R$ {((d.valorRecebido || 0) / 100).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">{d.clienteType}</span>
+                            </td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
+                            </td>
+                            {/* Mês do pagamento — destaca em accent se diferente do mês de lançamento */}
+                            <td className="px-4 py-3 text-xs text-muted-foreground">
+                              {d.statusPagamento === 'PAGO' && d.paymentMonth && d.paymentMonth !== d.month
+                                ? <span className="text-accent font-medium">{d.paymentMonth}</span>
+                                : d.statusPagamento === 'PAGO' ? d.month : '—'}
+                            </td>
+                            <td className="px-4 py-3 text-success font-medium">R$ {((d.comissao || 0) / 100).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <div className="flex gap-1">
+                                <button onClick={() => handleEdit(d)} className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"><Edit className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => handleDelete(d.id)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                              </div>
+                            </td>
+                          </>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
+
+          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/30">
-              <p className="text-sm text-muted-foreground">Mostrando {((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)} de {filtered.length}</p>
+              <p className="text-sm text-muted-foreground">
+                Mostrando {((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)} de {filtered.length}
+              </p>
               <div className="flex gap-2">
                 <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
-                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="px-3 py-2 text-sm font-medium">{currentPage} / {totalPages}</span>
                 <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
-                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed">
+                  className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <ChevronRight className="w-4 h-4" />
                 </button>
               </div>

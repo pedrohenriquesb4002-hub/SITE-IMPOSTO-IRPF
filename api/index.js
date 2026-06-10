@@ -50,6 +50,7 @@ export default async function handler(req, res) {
   const sql = getDb()
 
   try {
+    // ─── AUTH ────────────────────────────────────────────────
     if (url === '/auth/login' && req.method === 'POST') {
       const { username, password } = req.body
       if (!username || !password) return res.status(400).json({ error: 'Usuário e senha obrigatórios' })
@@ -59,7 +60,10 @@ export default async function handler(req, res) {
         return res.status(401).json({ error: 'Credenciais inválidas' })
       await sql`UPDATE users SET "lastSignedIn" = NOW() WHERE id = ${user.id}`
       const token = await signToken({ id: user.id, username: user.username, role: user.role })
-      return res.status(200).json({ token, user: { id: user.id, username: user.username, name: user.name, email: user.email, role: user.role } })
+      return res.status(200).json({
+        token,
+        user: { id: user.id, username: user.username, name: user.displayName || user.name, email: user.email, role: user.role, photo: user.photo }
+      })
     }
 
     if (url === '/auth/register' && req.method === 'POST') {
@@ -75,16 +79,40 @@ export default async function handler(req, res) {
       const ex = await sql`SELECT id FROM users WHERE username = ${username.trim()} LIMIT 1`
       if (ex.length > 0) return res.status(409).json({ error: 'Usuário já existe' })
       const hash = await bcrypt.hash(password, 12)
-      const [user] = await sql`INSERT INTO users (username, password_hash, name, role) VALUES (${username.trim()}, ${hash}, ${name || username.trim()}, ${count === 0 ? 'admin' : 'user'}) RETURNING id, username, name, email, role`
+      const [user] = await sql`INSERT INTO users (username, password_hash, name, "displayName", role) VALUES (${username.trim()}, ${hash}, ${name || username.trim()}, ${name || username.trim()}, ${count === 0 ? 'admin' : 'user'}) RETURNING id, username, name, "displayName", email, role, photo`
       const token = await signToken({ id: user.id, username: user.username, role: user.role })
-      return res.status(201).json({ token, user })
+      return res.status(201).json({ token, user: { ...user, name: user.displayName || user.name } })
     }
 
     if (url === '/auth/me' && req.method === 'GET') {
       const p = await auth(req, res); if (!p) return
-      const [user] = await sql`SELECT id, username, name, email, role FROM users WHERE id = ${p.id} LIMIT 1`
+      const [user] = await sql`SELECT id, username, name, "displayName", email, role, photo FROM users WHERE id = ${p.id} LIMIT 1`
       if (!user) return res.status(404).json({ error: 'Não encontrado' })
-      return res.status(200).json(user)
+      return res.status(200).json({ ...user, name: user.displayName || user.name })
+    }
+
+    // ─── PROFILE UPDATE ──────────────────────────────────────
+    if (url === '/auth/profile' && req.method === 'PUT') {
+      const p = await auth(req, res); if (!p) return
+      const { name, email, photo } = req.body
+      const [updated] = await sql`
+        UPDATE users SET
+          "displayName" = COALESCE(${name || null}, "displayName"),
+          email = COALESCE(${email || null}, email),
+          photo = COALESCE(${photo || null}, photo),
+          "updatedAt" = NOW()
+        WHERE id = ${p.id}
+        RETURNING id, username, name, "displayName", email, role, photo
+      `
+      // Também atualiza o nome no collaborators se existir
+      if (name) {
+        const oldUser = await sql`SELECT "displayName", name FROM users WHERE id = ${p.id} LIMIT 1`
+        const oldName = oldUser[0]?.displayName || oldUser[0]?.name
+        if (oldName && oldName !== name) {
+          await sql`UPDATE collaborators SET name = ${name} WHERE "userId" = ${p.id} AND name = ${oldName}`
+        }
+      }
+      return res.status(200).json({ ...updated, name: updated.displayName || updated.name })
     }
 
     const p = await auth(req, res); if (!p) return
@@ -92,12 +120,14 @@ export default async function handler(req, res) {
 
     async function getSettings() {
       const r = await sql`SELECT * FROM settings WHERE "userId" = ${userId} LIMIT 1`
-      return r[0] || { percentualDiversos: 10, valorFixoSocio: 500 }
+      return r[0] || { percentualDiversos: 10, valorFixoSocio: 500, percentualDiversosIRPF: 10, valorFixoSocioIRPF: 500, percentualDiversosITR: 10, valorFixoSocioITR: 500 }
     }
 
+    // ─── DECLARATIONS IRPF ───────────────────────────────────
     if (url.startsWith('/declarations')) {
       const idMatch = url.match(/\/declarations\/(\d+)$/)
       const isAll = url.includes('/declarations/all')
+
       if (isAll && req.method === 'DELETE') {
         await sql`DELETE FROM declarations WHERE "userId" = ${userId} AND month = ${req.query.month}`
         return res.status(200).json({ success: true })
@@ -107,14 +137,27 @@ export default async function handler(req, res) {
         const [own] = await sql`SELECT id FROM declarations WHERE id = ${id} AND "userId" = ${userId} LIMIT 1`
         if (!own) return res.status(404).json({ error: 'Não encontrado' })
         if (req.method === 'PUT') {
-          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento } = req.body
+          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body
           const [cur] = await sql`SELECT * FROM declarations WHERE id = ${id} LIMIT 1`
           const s = await getSettings()
           const nv = valorRecebido ?? cur.valorRecebido
           const nt = clienteType ?? cur.clienteType
           const ns = statusPagamento ?? cur.statusPagamento
-          const comissao = calcComissao(nv, nt, ns, s.percentualDiversos, s.valorFixoSocio)
-          const [u] = await sql`UPDATE declarations SET collaborator=COALESCE(${collaborator||null},collaborator),"cpfCliente"=COALESCE(${cpfCliente??null},"cpfCliente"),cliente=COALESCE(${cliente||null},cliente),"valorRecebido"=${nv},"clienteType"=${nt},"statusPagamento"=${ns},comissao=${comissao},"updatedAt"=NOW() WHERE id=${id} RETURNING *`
+          const npm = paymentMonth ?? cur.paymentMonth
+          const pct = s.percentualDiversosIRPF ?? s.percentualDiversos
+          const fixo = s.valorFixoSocioIRPF ?? s.valorFixoSocio
+          const comissao = ns === 'PAGO' ? calcComissao(nv, nt, ns, pct, fixo) : 0
+          const [u] = await sql`UPDATE declarations SET
+            collaborator=COALESCE(${collaborator||null},collaborator),
+            "cpfCliente"=COALESCE(${cpfCliente??null},"cpfCliente"),
+            cliente=COALESCE(${cliente||null},cliente),
+            "valorRecebido"=${nv},
+            "clienteType"=${nt},
+            "statusPagamento"=${ns},
+            comissao=${comissao},
+            "paymentMonth"=${ns === 'PAGO' ? (npm || cur.month) : null},
+            "updatedAt"=NOW()
+            WHERE id=${id} RETURNING *`
           return res.status(200).json(u)
         }
         if (req.method === 'DELETE') {
@@ -127,17 +170,23 @@ export default async function handler(req, res) {
         return res.status(200).json(rows)
       }
       if (req.method === 'POST') {
-        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento } = req.body
+        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body
         const s = await getSettings()
-        const comissao = calcComissao(valorRecebido, clienteType, statusPagamento, s.percentualDiversos, s.valorFixoSocio)
-        const [row] = await sql`INSERT INTO declarations ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento") VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido},${clienteType},${comissao},${statusPagamento}) RETURNING *`
+        const pct = s.percentualDiversosIRPF ?? s.percentualDiversos
+        const fixo = s.valorFixoSocioIRPF ?? s.valorFixoSocio
+        const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido, clienteType, statusPagamento, pct, fixo) : 0
+        const pm = statusPagamento === 'PAGO' ? (paymentMonth || month) : null
+        const [row] = await sql`INSERT INTO declarations ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento","paymentMonth")
+          VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido},${clienteType},${comissao},${statusPagamento},${pm}) RETURNING *`
         return res.status(201).json(row)
       }
     }
 
+    // ─── DECLARATIONS ITR ────────────────────────────────────
     if (url.startsWith('/itr')) {
       const idMatch = url.match(/\/itr\/(\d+)$/)
       const isAll = url.includes('/itr/all')
+
       if (isAll && req.method === 'DELETE') {
         await sql`DELETE FROM "itrDeclarations" WHERE "userId"=${userId} AND month=${req.query.month}`
         return res.status(200).json({ success: true })
@@ -147,14 +196,27 @@ export default async function handler(req, res) {
         const [own] = await sql`SELECT id FROM "itrDeclarations" WHERE id=${id} AND "userId"=${userId} LIMIT 1`
         if (!own) return res.status(404).json({ error: 'Não encontrado' })
         if (req.method === 'PUT') {
-          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento } = req.body
+          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body
           const [cur] = await sql`SELECT * FROM "itrDeclarations" WHERE id=${id} LIMIT 1`
           const s = await getSettings()
           const nv = valorRecebido ?? cur.valorRecebido
           const nt = clienteType ?? cur.clienteType
           const ns = statusPagamento ?? cur.statusPagamento
-          const comissao = calcComissao(nv, nt, ns, s.percentualDiversos, s.valorFixoSocio)
-          const [u] = await sql`UPDATE "itrDeclarations" SET collaborator=COALESCE(${collaborator||null},collaborator),"cpfCliente"=COALESCE(${cpfCliente??null},"cpfCliente"),cliente=COALESCE(${cliente||null},cliente),"valorRecebido"=${nv},"clienteType"=${nt},"statusPagamento"=${ns},comissao=${comissao},"updatedAt"=NOW() WHERE id=${id} RETURNING *`
+          const npm = paymentMonth ?? cur.paymentMonth
+          const pct = s.percentualDiversosITR ?? s.percentualDiversos
+          const fixo = s.valorFixoSocioITR ?? s.valorFixoSocio
+          const comissao = ns === 'PAGO' ? calcComissao(nv, nt, ns, pct, fixo) : 0
+          const [u] = await sql`UPDATE "itrDeclarations" SET
+            collaborator=COALESCE(${collaborator||null},collaborator),
+            "cpfCliente"=COALESCE(${cpfCliente??null},"cpfCliente"),
+            cliente=COALESCE(${cliente||null},cliente),
+            "valorRecebido"=${nv},
+            "clienteType"=${nt},
+            "statusPagamento"=${ns},
+            comissao=${comissao},
+            "paymentMonth"=${ns === 'PAGO' ? (npm || cur.month) : null},
+            "updatedAt"=NOW()
+            WHERE id=${id} RETURNING *`
           return res.status(200).json(u)
         }
         if (req.method === 'DELETE') {
@@ -167,14 +229,19 @@ export default async function handler(req, res) {
         return res.status(200).json(rows)
       }
       if (req.method === 'POST') {
-        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento } = req.body
+        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body
         const s = await getSettings()
-        const comissao = calcComissao(valorRecebido, clienteType, statusPagamento, s.percentualDiversos, s.valorFixoSocio)
-        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento") VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido},${clienteType},${comissao},${statusPagamento}) RETURNING *`
+        const pct = s.percentualDiversosITR ?? s.percentualDiversos
+        const fixo = s.valorFixoSocioITR ?? s.valorFixoSocio
+        const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido, clienteType, statusPagamento, pct, fixo) : 0
+        const pm = statusPagamento === 'PAGO' ? (paymentMonth || month) : null
+        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento","paymentMonth")
+          VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido},${clienteType},${comissao},${statusPagamento},${pm}) RETURNING *`
         return res.status(201).json(row)
       }
     }
 
+    // ─── COLLABORATORS ───────────────────────────────────────
     if (url.startsWith('/collaborators')) {
       const idMatch = url.match(/\/collaborators\/(\d+)$/)
       if (idMatch) {
@@ -182,6 +249,11 @@ export default async function handler(req, res) {
         if (req.method === 'DELETE') {
           await sql`DELETE FROM collaborators WHERE id=${id} AND "userId"=${userId}`
           return res.status(200).json({ success: true })
+        }
+        if (req.method === 'PUT') {
+          const { photo } = req.body
+          const [u] = await sql`UPDATE collaborators SET photo=${photo||null} WHERE id=${id} AND "userId"=${userId} RETURNING *`
+          return res.status(200).json(u)
         }
       }
       if (req.method === 'GET') {
@@ -201,31 +273,53 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─── SETTINGS ────────────────────────────────────────────
     if (url === '/settings') {
       if (req.method === 'GET') return res.status(200).json(await getSettings())
       if (req.method === 'PUT') {
-        const { percentualDiversos, valorFixoSocio } = req.body
-        const [row] = await sql`INSERT INTO settings ("userId","percentualDiversos","valorFixoSocio") VALUES (${userId},${percentualDiversos??10},${valorFixoSocio??500}) ON CONFLICT ("userId") DO UPDATE SET "percentualDiversos"=COALESCE(${percentualDiversos??null},settings."percentualDiversos"),"valorFixoSocio"=COALESCE(${valorFixoSocio??null},settings."valorFixoSocio"),"updatedAt"=NOW() RETURNING *`
+        const { percentualDiversos, valorFixoSocio, percentualDiversosIRPF, valorFixoSocioIRPF, percentualDiversosITR, valorFixoSocioITR } = req.body
+        const [row] = await sql`
+          INSERT INTO settings ("userId","percentualDiversos","valorFixoSocio","percentualDiversosIRPF","valorFixoSocioIRPF","percentualDiversosITR","valorFixoSocioITR")
+          VALUES (${userId},${percentualDiversos??10},${valorFixoSocio??500},${percentualDiversosIRPF??10},${valorFixoSocioIRPF??500},${percentualDiversosITR??10},${valorFixoSocioITR??500})
+          ON CONFLICT ("userId") DO UPDATE SET
+            "percentualDiversos"=COALESCE(${percentualDiversos??null},settings."percentualDiversos"),
+            "valorFixoSocio"=COALESCE(${valorFixoSocio??null},settings."valorFixoSocio"),
+            "percentualDiversosIRPF"=COALESCE(${percentualDiversosIRPF??null},settings."percentualDiversosIRPF"),
+            "valorFixoSocioIRPF"=COALESCE(${valorFixoSocioIRPF??null},settings."valorFixoSocioIRPF"),
+            "percentualDiversosITR"=COALESCE(${percentualDiversosITR??null},settings."percentualDiversosITR"),
+            "valorFixoSocioITR"=COALESCE(${valorFixoSocioITR??null},settings."valorFixoSocioITR"),
+            "updatedAt"=NOW()
+          RETURNING *`
         return res.status(200).json(row)
       }
     }
 
+    // ─── COMMISSIONS ─────────────────────────────────────────
     if (url === '/commissions' || url === '/commissions/itr') {
       const isItr = url.includes('/itr')
+      // Agrupa por paymentMonth (mês em que foi pago), não pelo mês de lançamento
       const data = isItr
-        ? await sql`SELECT collaborator,month,"valorRecebido","statusPagamento",comissao FROM "itrDeclarations" WHERE "userId"=${userId}`
-        : await sql`SELECT collaborator,month,"valorRecebido","statusPagamento",comissao FROM declarations WHERE "userId"=${userId}`
+        ? await sql`SELECT collaborator,month,"paymentMonth","valorRecebido","statusPagamento",comissao FROM "itrDeclarations" WHERE "userId"=${userId}`
+        : await sql`SELECT collaborator,month,"paymentMonth","valorRecebido","statusPagamento",comissao FROM declarations WHERE "userId"=${userId}`
       const map = {}
       for (const d of data) {
         if (!map[d.collaborator]) map[d.collaborator] = { collaborator: d.collaborator, months: {} }
-        if (!map[d.collaborator].months[d.month]) map[d.collaborator].months[d.month] = { vendas: 0, recebido: 0, comissao: 0 }
+        // Usa paymentMonth para comissão, e month para vendas/recebido
+        const comMonth = d.statusPagamento === 'PAGO' && d.paymentMonth ? d.paymentMonth : d.month
+        if (!map[d.collaborator].months[d.month]) map[d.collaborator].months[d.month] = { vendas: 0, recebido: 0, comissao: 0, aguardando: 0 }
         map[d.collaborator].months[d.month].vendas++
         map[d.collaborator].months[d.month].recebido += d.valorRecebido || 0
-        if (d.statusPagamento === 'PAGO') map[d.collaborator].months[d.month].comissao += d.comissao || 0
+        if (d.statusPagamento === 'AGUARDANDO') map[d.collaborator].months[d.month].aguardando++
+        // Comissão entra no mês de pagamento
+        if (d.statusPagamento === 'PAGO') {
+          if (!map[d.collaborator].months[comMonth]) map[d.collaborator].months[comMonth] = { vendas: 0, recebido: 0, comissao: 0, aguardando: 0 }
+          map[d.collaborator].months[comMonth].comissao += d.comissao || 0
+        }
       }
       return res.status(200).json(Object.values(map))
     }
 
+    // ─── QUOTAS ──────────────────────────────────────────────
     if (url.startsWith('/quotas')) {
       const idMatch = url.match(/\/quotas\/(\d+)$/)
       if (idMatch) {
@@ -253,6 +347,76 @@ export default async function handler(req, res) {
       }
     }
 
+    // ─── DASHBOARD ───────────────────────────────────────────
+    if (url === '/dashboard' && req.method === 'GET') {
+      const irpfMonths = ['Março','Abril','Maio']
+      const itrMonths = ['Agosto','Setembro']
+      const [irpfAll, itrAll, collabs, settings] = await Promise.all([
+        sql`SELECT * FROM declarations WHERE "userId"=${userId}`,
+        sql`SELECT * FROM "itrDeclarations" WHERE "userId"=${userId}`,
+        sql`SELECT * FROM collaborators WHERE "userId"=${userId}`,
+        getSettings()
+      ])
+      const irpfPago = irpfAll.filter(d => d.statusPagamento === 'PAGO')
+      const itrPago = itrAll.filter(d => d.statusPagamento === 'PAGO')
+      const irpfAguard = irpfAll.filter(d => d.statusPagamento === 'AGUARDANDO')
+      const itrAguard = itrAll.filter(d => d.statusPagamento === 'AGUARDANDO')
+
+      // Receita por mês IRPF
+      const irpfByMonth = {}
+      for (const m of irpfMonths) {
+        const md = irpfAll.filter(d => d.month === m)
+        irpfByMonth[m] = {
+          total: md.length,
+          recebido: md.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          comissao: md.filter(d=>d.statusPagamento==='PAGO').reduce((s,d)=>s+(d.comissao||0),0)
+        }
+      }
+      const itrByMonth = {}
+      for (const m of itrMonths) {
+        const md = itrAll.filter(d => d.month === m)
+        itrByMonth[m] = {
+          total: md.length,
+          recebido: md.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          comissao: md.filter(d=>d.statusPagamento==='PAGO').reduce((s,d)=>s+(d.comissao||0),0)
+        }
+      }
+
+      // Top colaboradores por comissão
+      const collabMap = {}
+      for (const d of [...irpfPago, ...itrPago]) {
+        if (!collabMap[d.collaborator]) collabMap[d.collaborator] = { name: d.collaborator, comissao: 0, vendas: 0 }
+        collabMap[d.collaborator].comissao += d.comissao || 0
+        collabMap[d.collaborator].vendas++
+      }
+      const topCollabs = Object.values(collabMap).sort((a,b) => b.comissao - a.comissao).slice(0, 5)
+
+      return res.status(200).json({
+        totalColaboradores: collabs.length,
+        irpf: {
+          total: irpfAll.length,
+          pago: irpfPago.length,
+          aguardando: irpfAguard.length,
+          recebidoTotal: irpfAll.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          recebidoPago: irpfPago.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          comissaoTotal: irpfPago.reduce((s,d)=>s+(d.comissao||0),0),
+          byMonth: irpfByMonth,
+        },
+        itr: {
+          total: itrAll.length,
+          pago: itrPago.length,
+          aguardando: itrAguard.length,
+          recebidoTotal: itrAll.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          recebidoPago: itrPago.reduce((s,d)=>s+(d.valorRecebido||0),0),
+          comissaoTotal: itrPago.reduce((s,d)=>s+(d.comissao||0),0),
+          byMonth: itrByMonth,
+        },
+        topCollaboradores: topCollabs,
+        settings,
+      })
+    }
+
+    // ─── IMPORT/EXPORT ───────────────────────────────────────
     if (url === '/import' && req.method === 'POST') {
       const { declarations, collaborators } = req.body
       const s = await getSettings()
@@ -265,8 +429,11 @@ export default async function handler(req, res) {
         try {
           const { collaborator, cliente, cpfCliente, valorRecebido, clienteType, statusPagamento, month, categoria } = row
           if (!collaborator || !cliente || !month) continue
-          const comissao = calcComissao(valorRecebido||0, clienteType||'Diversos', statusPagamento||'AGUARDANDO', s.percentualDiversos, s.valorFixoSocio)
-          if ((categoria||'IRPF').toUpperCase() === 'ITR') {
+          const isItr = (categoria||'IRPF').toUpperCase() === 'ITR'
+          const pct = isItr ? (s.percentualDiversosITR ?? s.percentualDiversos) : (s.percentualDiversosIRPF ?? s.percentualDiversos)
+          const fixo = isItr ? (s.valorFixoSocioITR ?? s.valorFixoSocio) : (s.valorFixoSocioIRPF ?? s.valorFixoSocio)
+          const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido||0, clienteType||'Diversos', statusPagamento||'AGUARDANDO', pct, fixo) : 0
+          if (isItr) {
             await sql`INSERT INTO "itrDeclarations" ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento") VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido||0},${clienteType||'Diversos'},${comissao},${statusPagamento||'AGUARDANDO'})`
           } else {
             await sql`INSERT INTO declarations ("userId",month,collaborator,"cpfCliente",cliente,"valorRecebido","clienteType",comissao,"statusPagamento") VALUES (${userId},${month},${collaborator},${cpfCliente||null},${cliente},${valorRecebido||0},${clienteType||'Diversos'},${comissao},${statusPagamento||'AGUARDANDO'})`
