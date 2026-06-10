@@ -27,7 +27,8 @@ export const useAuthStore = create<AuthState>()(
       setAuth: (token, user) => set({ token, user }),
       clearAuth: () => set({ token: null, user: null }),
       isAuthenticated: () => !!get().token,
-      updateUser: (updates) => set((s) => ({ user: s.user ? { ...s.user, ...updates } : s.user })),
+      updateUser: (updates) =>
+        set((s) => ({ user: s.user ? { ...s.user, ...updates } : s.user })),
     }),
     { name: 'irpf-auth' }
   )
@@ -62,17 +63,28 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     }),
-  register: (username: string, password: string, name: string) =>
-    apiRequest<{ token: string; user: User }>('/auth/register', {
+
+  // Cadastro com aprovação — não loga automaticamente, só envia pedido
+  registerRequest: (data: { name: string; email: string; username: string; password: string }) =>
+    apiRequest<{ message: string }>('/auth/register-request', {
       method: 'POST',
-      body: JSON.stringify({ username, password, name }),
+      body: JSON.stringify(data),
     }),
+
   me: () => apiRequest<User>('/auth/me'),
-  updateProfile: (data: { name?: string; email?: string; photo?: string | null }) =>
-    apiRequest<User>('/auth/profile', { method: 'PUT', body: JSON.stringify(data) }),
+
+  updateProfile: (data: { name?: string; email?: string; photo?: string | null; currentPassword?: string; newPassword?: string }) =>
+    apiRequest<User>('/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    }),
+
+  // Admin: lista pendentes
+  pendingRegistrations: () => apiRequest<PendingUser[]>('/admin/pending'),
 
   declarations: {
-    list: (month: string) => apiRequest<Declaration[]>(`/declarations?month=${encodeURIComponent(month)}`),
+    list: (month: string) =>
+      apiRequest<Declaration[]>(`/declarations?month=${encodeURIComponent(month)}`),
     create: (data: Omit<Declaration, 'id' | 'createdAt' | 'updatedAt'>) =>
       apiRequest<Declaration>('/declarations', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: Partial<Declaration>) =>
@@ -83,7 +95,8 @@ export const api = {
   },
 
   itr: {
-    list: (month: string) => apiRequest<Declaration[]>(`/itr?month=${encodeURIComponent(month)}`),
+    list: (month: string) =>
+      apiRequest<Declaration[]>(`/itr?month=${encodeURIComponent(month)}`),
     create: (data: Omit<Declaration, 'id' | 'createdAt' | 'updatedAt'>) =>
       apiRequest<Declaration>('/itr', { method: 'POST', body: JSON.stringify(data) }),
     update: (id: number, data: Partial<Declaration>) =>
@@ -129,7 +142,7 @@ export const api = {
   exportExcel: () => apiRequest('/export'),
 }
 
-// ─── Types ───────────────────────────────────────────────────
+// ─── Types ──────────────────────────────────────────────────
 export interface Declaration {
   id: number
   month: string
@@ -175,6 +188,15 @@ export interface Quota {
   meioEnvio: string
   createdAt?: string
   updatedAt?: string
+}
+
+export interface PendingUser {
+  id: number
+  name: string
+  email: string
+  username: string
+  requestedAt: string
+  status: string
 }
 
 export interface DashboardData {
