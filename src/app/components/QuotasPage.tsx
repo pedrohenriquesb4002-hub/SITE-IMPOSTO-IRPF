@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { Plus, Trash2, Check, ChevronUp, ChevronDown } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type Quota } from '../../lib/store'
+import ConfirmModal from './ConfirmModal'
 
 const MEIO_ENVIO_OPTIONS = ['WhatsApp', 'Email', 'SMS', 'Presencial', 'Outro']
 
@@ -16,12 +17,14 @@ export default function QuotasPage() {
     meioEnvio: 'WhatsApp',
   })
 
+  // Modal
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deletingQuotaId, setDeletingQuotaId] = useState<number | null>(null)
+  const [deletingQuotaCliente, setDeletingQuotaCliente] = useState('')
+
   useEffect(() => {
     Promise.all([api.quotas.list(), api.collaborators.list()])
-      .then(([q, c]) => {
-        setQuotas(q)
-        setColaboradores(c.map((x) => x.name))
-      })
+      .then(([q, c]) => { setQuotas(q); setColaboradores(c.map(x => x.name)) })
       .catch(() => toast.error('Erro ao carregar quotas'))
       .finally(() => setLoading(false))
   }, [])
@@ -38,26 +41,34 @@ export default function QuotasPage() {
         cotasEnviadas: 0,
         meioEnvio: formData.meioEnvio,
       })
-      setQuotas((p) => [...p, created])
+      setQuotas(p => [...p, created])
       setFormData({ colaborador: '', cliente: '', quantidadeCotas: '', meioEnvio: 'WhatsApp' })
       toast.success('Quota adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Excluir esta quota?')) return
+  const askDelete = (id: number, cliente: string) => {
+    setDeletingQuotaId(id)
+    setDeletingQuotaCliente(cliente)
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (deletingQuotaId === null) return
+    setDeleteModalOpen(false)
     try {
-      await api.quotas.delete(id)
-      setQuotas((p) => p.filter((q) => q.id !== id))
-      toast.success('Removida')
-    } catch { toast.error('Erro') }
+      await api.quotas.delete(deletingQuotaId)
+      setQuotas(p => p.filter(q => q.id !== deletingQuotaId))
+      toast.success('Quota excluída')
+    } catch { toast.error('Erro ao excluir') }
+    finally { setDeletingQuotaId(null); setDeletingQuotaCliente('') }
   }
 
   const handleIncrement = async (quota: Quota) => {
     if (quota.cotasEnviadas >= quota.quantidadeCotas) return
     try {
       const updated = await api.quotas.update(quota.id, { cotasEnviadas: quota.cotasEnviadas + 1 })
-      setQuotas((p) => p.map((q) => (q.id === quota.id ? updated : q)))
+      setQuotas(p => p.map(q => q.id === quota.id ? updated : q))
     } catch { toast.error('Erro') }
   }
 
@@ -65,7 +76,7 @@ export default function QuotasPage() {
     if (quota.cotasEnviadas <= 0) return
     try {
       const updated = await api.quotas.update(quota.id, { cotasEnviadas: quota.cotasEnviadas - 1 })
-      setQuotas((p) => p.map((q) => (q.id === quota.id ? updated : q)))
+      setQuotas(p => p.map(q => q.id === quota.id ? updated : q))
     } catch { toast.error('Erro') }
   }
 
@@ -79,10 +90,22 @@ export default function QuotasPage() {
 
   const totalQuotas = quotas.reduce((s, q) => s + q.quantidadeCotas, 0)
   const totalEnviadas = quotas.reduce((s, q) => s + q.cotasEnviadas, 0)
-  const totalConcluidas = quotas.filter((q) => q.cotasEnviadas >= q.quantidadeCotas).length
+  const totalConcluidas = quotas.filter(q => q.cotasEnviadas >= q.quantidadeCotas).length
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
+
+      <ConfirmModal
+        open={deleteModalOpen}
+        variant="danger"
+        title="Excluir quota"
+        message={`Tem certeza que deseja excluir a quota de "${deletingQuotaCliente}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        onConfirm={confirmDelete}
+        onCancel={() => { setDeleteModalOpen(false); setDeletingQuotaId(null) }}
+      />
+
       <div className="max-w-7xl mx-auto space-y-8">
         <div>
           <h2 className="text-3xl font-bold text-foreground tracking-tight">Quotas de Impostos</h2>
@@ -123,7 +146,7 @@ export default function QuotasPage() {
                 onChange={(e) => setFormData({ ...formData, colaborador: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
                 <option value="">Selecione...</option>
-                {colaboradores.map((c) => <option key={c} value={c}>{c}</option>)}
+                {colaboradores.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
@@ -145,7 +168,7 @@ export default function QuotasPage() {
               <select value={formData.meioEnvio}
                 onChange={(e) => setFormData({ ...formData, meioEnvio: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
-                {MEIO_ENVIO_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
+                {MEIO_ENVIO_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
               </select>
             </div>
           </div>
@@ -170,7 +193,7 @@ export default function QuotasPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {quotas.map((q) => {
+            {quotas.map(q => {
               const pct = Math.round((q.cotasEnviadas / q.quantidadeCotas) * 100)
               const done = q.cotasEnviadas >= q.quantidadeCotas
               return (
@@ -183,13 +206,12 @@ export default function QuotasPage() {
                       </div>
                       <p className="text-sm text-muted-foreground mt-0.5">{q.collaborator} • {q.meioEnvio}</p>
                     </div>
-                    <button onClick={() => handleDelete(q.id)}
+                    <button onClick={() => askDelete(q.id, q.cliente)}
                       className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
 
-                  {/* Progress bar */}
                   <div className="mb-4">
                     <div className="flex justify-between text-xs mb-1.5">
                       <span className="text-muted-foreground">Progresso</span>
@@ -205,7 +227,6 @@ export default function QuotasPage() {
                     </div>
                   </div>
 
-                  {/* Controls */}
                   <div className="flex items-center gap-3">
                     <button onClick={() => handleDecrement(q)} disabled={q.cotasEnviadas === 0}
                       className="w-10 h-10 rounded-xl border-2 border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">

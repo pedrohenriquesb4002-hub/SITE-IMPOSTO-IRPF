@@ -12,6 +12,7 @@ import ConfiguracoesPage from './components/ConfiguracoesPage'
 import ColaboradoresPage from './components/ColaboradoresPage'
 import DashboardPage from './components/DashboardPage'
 import PrecificacoesPage from './components/PrecificacoesPage'
+import ConfirmModal from './components/ConfirmModal'
 import { useAuthStore } from '../lib/store'
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -29,6 +30,9 @@ function Dashboard() {
   const [irpfMonth, setIrpfMonth] = useState('Março')
   const [itrMonth, setItrMonth] = useState('Agosto')
 
+  // Modal de confirmação de saída
+  const [showLogoutModal, setShowLogoutModal] = useState(false)
+
   useEffect(() => {
     if (darkMode) document.documentElement.classList.add('dark')
     else document.documentElement.classList.remove('dark')
@@ -36,10 +40,13 @@ function Dashboard() {
   }, [darkMode])
 
   const handleLogout = () => {
-    if (confirm('Deseja realmente sair?')) {
-      clearAuth()
-      navigate('/login', { replace: true })
-    }
+    setShowLogoutModal(true)
+  }
+
+  const confirmLogout = () => {
+    setShowLogoutModal(false)
+    clearAuth()
+    navigate('/login', { replace: true })
   }
 
   const menuItems = [
@@ -80,9 +87,7 @@ function Dashboard() {
           <ConfiguracoesPage
             darkMode={darkMode}
             toggleDarkMode={() => setDarkMode(!darkMode)}
-            onUpdateProfile={(name, photo) => {
-              updateUser({ name, photo })
-            }}
+            onUpdateProfile={(name, photo) => { updateUser({ name, photo }) }}
           />
         )
       default: return <DashboardPage />
@@ -91,6 +96,19 @@ function Dashboard() {
 
   return (
     <div className="size-full flex bg-background min-h-screen">
+
+      {/* Modal de saída */}
+      <ConfirmModal
+        open={showLogoutModal}
+        variant="logout"
+        title="Sair do sistema"
+        message="Deseja realmente encerrar sua sessão? Você precisará fazer login novamente para acessar o sistema."
+        confirmLabel="Sair"
+        cancelLabel="Cancelar"
+        onConfirm={confirmLogout}
+        onCancel={() => setShowLogoutModal(false)}
+      />
+
       {/* Sidebar */}
       <div className={`${sidebarCollapsed ? 'w-20' : 'w-72'} bg-sidebar transition-all duration-300 flex flex-col shadow-2xl flex-shrink-0`}>
         <div className="px-6 py-6 border-b border-sidebar-border/50 flex items-center justify-between">
@@ -128,15 +146,12 @@ function Dashboard() {
               {item.id === 'irpf' && currentPage === 'irpf' && !sidebarCollapsed && (
                 <div className="ml-8 mt-2 space-y-1 mb-2">
                   {irpfMonths.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setIrpfMonth(m.id)}
+                    <button key={m.id} onClick={() => setIrpfMonth(m.id)}
                       className={`w-full text-left px-4 py-2 rounded-lg text-xs font-medium transition-all ${
                         irpfMonth === m.id
                           ? 'bg-sidebar-accent text-accent border-l-2 border-accent'
                           : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50'
-                      }`}
-                    >
+                      }`}>
                       {m.label}
                     </button>
                   ))}
@@ -146,15 +161,12 @@ function Dashboard() {
               {item.id === 'itr' && currentPage === 'itr' && !sidebarCollapsed && (
                 <div className="ml-8 mt-2 space-y-1 mb-2">
                   {itrMonths.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setItrMonth(m.id)}
+                    <button key={m.id} onClick={() => setItrMonth(m.id)}
                       className={`w-full text-left px-4 py-2 rounded-lg text-xs font-medium transition-all ${
                         itrMonth === m.id
                           ? 'bg-sidebar-accent text-accent border-l-2 border-accent'
                           : 'text-sidebar-foreground/60 hover:bg-sidebar-accent/50'
-                      }`}
-                    >
+                      }`}>
                       {m.label}
                     </button>
                   ))}
@@ -180,18 +192,14 @@ function Dashboard() {
             )}
           </div>
 
-          <button
-            onClick={() => setDarkMode(!darkMode)}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent transition-all"
-          >
+          <button onClick={() => setDarkMode(!darkMode)}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-sidebar-foreground/80 hover:bg-sidebar-accent transition-all">
             {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
             {!sidebarCollapsed && <span>{darkMode ? 'Modo Claro' : 'Modo Escuro'}</span>}
           </button>
 
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all"
-          >
+          <button onClick={handleLogout}
+            className="w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium text-destructive hover:bg-destructive/10 transition-all">
             <LogOut className="w-5 h-5" />
             {!sidebarCollapsed && <span>Sair</span>}
           </button>

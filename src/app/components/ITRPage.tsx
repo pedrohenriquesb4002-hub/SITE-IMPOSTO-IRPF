@@ -3,6 +3,7 @@ import { Plus, Trash2, Search, Edit, ChevronLeft, ChevronRight, Save, X } from '
 import { toast } from 'sonner'
 import { api, type Declaration, type Collaborator } from '../../lib/store'
 import { formatCPF } from '../../lib/utils'
+import ConfirmModal from './ConfirmModal'
 
 const ITR_MONTHS = ['Agosto', 'Setembro']
 
@@ -23,6 +24,12 @@ export default function ITRPage({ month }: { month: string }) {
   const [currentPage, setCurrentPage] = useState(1)
   const itemsPerPage = 25
 
+  // Modais
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deletingCliente, setDeletingCliente] = useState('')
+  const [deleteAllModalOpen, setDeleteAllModalOpen] = useState(false)
+
   const load = useCallback(async () => {
     setLoading(true)
     try {
@@ -40,7 +47,6 @@ export default function ITRPage({ month }: { month: string }) {
   useEffect(() => { load() }, [load])
   useEffect(() => { setCurrentPage(1); setFormData(f => ({ ...f, paymentMonth: month })) }, [month])
 
-  // Busca foto do colaborador pelo nome
   const getColabPhoto = (name: string) =>
     colaboradores.find(c => c.name === name)?.photo || null
 
@@ -59,26 +65,36 @@ export default function ITRPage({ month }: { month: string }) {
         statusPagamento: formData.status,
         paymentMonth: formData.status === 'PAGO' ? formData.paymentMonth : null,
       })
-      setDeclaracoes((prev) => [...prev, created])
+      setDeclaracoes(prev => [...prev, created])
       setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentMonth: month })
       toast.success('Declaração ITR adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
 
-  const handleDelete = async (id: number) => {
-    try { await api.itr.delete(id); setDeclaracoes((p) => p.filter((d) => d.id !== id)); toast.success('Deletado') }
-    catch { toast.error('Erro ao deletar') }
+  const askDelete = (id: number, cliente: string) => {
+    setDeletingId(id); setDeletingCliente(cliente); setDeleteModalOpen(true)
   }
-
-  const handleDeleteAll = async () => {
-    if (!confirm(`Excluir todas as declarações ITR de ${month}?`)) return
-    try { await api.itr.deleteAll(month); setDeclaracoes([]); toast.success('Todas deletadas') }
-    catch { toast.error('Erro') }
+  const confirmDelete = async () => {
+    if (deletingId === null) return
+    setDeleteModalOpen(false)
+    try {
+      await api.itr.delete(deletingId)
+      setDeclaracoes(prev => prev.filter(d => d.id !== deletingId))
+      toast.success('Declaração removida')
+    } catch { toast.error('Erro ao deletar') }
+    finally { setDeletingId(null); setDeletingCliente('') }
+  }
+  const confirmDeleteAll = async () => {
+    setDeleteAllModalOpen(false)
+    try {
+      await api.itr.deleteAll(month)
+      setDeclaracoes([])
+      toast.success('Todas as declarações removidas')
+    } catch { toast.error('Erro ao deletar todas') }
   }
 
   const handleEdit = (d: Declaration) => { setEditingId(d.id); setEditFormData({ ...d }) }
   const handleCancelEdit = () => { setEditingId(null); setEditFormData(null) }
-
   const handleSaveEdit = async () => {
     if (!editFormData || editingId === null) return
     try {
@@ -91,17 +107,16 @@ export default function ITRPage({ month }: { month: string }) {
         statusPagamento: editFormData.statusPagamento,
         paymentMonth: editFormData.statusPagamento === 'PAGO' ? (editFormData.paymentMonth || month) : null,
       })
-      setDeclaracoes((p) => p.map((d) => (d.id === editingId ? updated : d)))
+      setDeclaracoes(prev => prev.map(d => d.id === editingId ? updated : d))
       setEditingId(null); setEditFormData(null)
       toast.success('Atualizado')
     } catch { toast.error('Erro ao salvar') }
   }
 
-  const filtered = declaracoes.filter((d) => {
-    return (!filterColaborador || d.collaborator.toLowerCase().includes(filterColaborador.toLowerCase())) &&
-           (!filterCliente || d.cliente.toLowerCase().includes(filterCliente.toLowerCase()))
-  })
-
+  const filtered = declaracoes.filter(d =>
+    (!filterColaborador || d.collaborator.toLowerCase().includes(filterColaborador.toLowerCase())) &&
+    (!filterCliente || d.cliente.toLowerCase().includes(filterCliente.toLowerCase()))
+  )
   const totalPages = Math.ceil(filtered.length / itemsPerPage)
   const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
   const totalRecebido = filtered.reduce((s, d) => s + (d.valorRecebido || 0), 0) / 100
@@ -114,7 +129,6 @@ export default function ITRPage({ month }: { month: string }) {
   }
   const statusLabel = (s: string) => ({ PAGO: 'Pago', AGUARDANDO: 'Aguardando', 'DOAÇÃO': 'Doação' }[s] || s)
 
-  // Avatar bolinha com foto ou inicial
   const Avatar = ({ name, photo }: { name: string; photo: string | null }) => (
     <div className="w-8 h-8 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-border flex items-center justify-center bg-gradient-to-br from-accent/30 to-accent/10">
       {photo
@@ -125,8 +139,29 @@ export default function ITRPage({ month }: { month: string }) {
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
-      <div className="max-w-7xl mx-auto space-y-8">
 
+      <ConfirmModal
+        open={deleteModalOpen}
+        variant="danger"
+        title="Excluir declaração ITR"
+        message={`Tem certeza que deseja excluir a declaração de "${deletingCliente}"? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        onConfirm={confirmDelete}
+        onCancel={() => { setDeleteModalOpen(false); setDeletingId(null) }}
+      />
+      <ConfirmModal
+        open={deleteAllModalOpen}
+        variant="danger"
+        title={`Excluir todas de ${month}`}
+        message={`Tem certeza que deseja excluir TODAS as declarações ITR de ${month}? Esta ação não pode ser desfeita.`}
+        confirmLabel="Excluir todas"
+        cancelLabel="Cancelar"
+        onConfirm={confirmDeleteAll}
+        onCancel={() => setDeleteAllModalOpen(false)}
+      />
+
+      <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
         <div className="flex items-center justify-between">
           <div>
@@ -136,7 +171,7 @@ export default function ITRPage({ month }: { month: string }) {
               Lançamento de Declarações ITR
             </p>
           </div>
-          <button onClick={handleDeleteAll}
+          <button onClick={() => setDeleteAllModalOpen(true)}
             className="px-5 py-2.5 bg-destructive text-destructive-foreground rounded-xl hover:shadow-lg hover:shadow-destructive/30 transition-all text-sm font-semibold flex items-center gap-2">
             <Trash2 className="w-4 h-4" /> Excluir Todas
           </button>
@@ -173,7 +208,7 @@ export default function ITRPage({ month }: { month: string }) {
                 onChange={(e) => setFormData({ ...formData, colaborador: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
                 <option value="">Selecione...</option>
-                {colaboradores.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                {colaboradores.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
               </select>
             </div>
             <div>
@@ -216,7 +251,6 @@ export default function ITRPage({ month }: { month: string }) {
                 <option value="DOAÇÃO">Doação</option>
               </select>
             </div>
-            {/* Campo mês do pagamento — aparece só quando PAGO */}
             {formData.status === 'PAGO' && (
               <div>
                 <label className="block text-xs font-medium text-foreground mb-2">
@@ -240,19 +274,19 @@ export default function ITRPage({ month }: { month: string }) {
         <div className="flex gap-4 flex-wrap">
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="text" value={filterColaborador}
-              onChange={(e) => setFilterColaborador(e.target.value)} placeholder="Filtrar colaborador..."
+            <input type="text" value={filterColaborador} onChange={(e) => setFilterColaborador(e.target.value)}
+              placeholder="Filtrar colaborador..."
               className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground" />
           </div>
           <div className="relative flex-1 min-w-48">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input type="text" value={filterCliente}
-              onChange={(e) => setFilterCliente(e.target.value)} placeholder="Filtrar cliente..."
+            <input type="text" value={filterCliente} onChange={(e) => setFilterCliente(e.target.value)}
+              placeholder="Filtrar cliente..."
               className="w-full pl-9 pr-3 py-2 text-sm bg-input-background border border-input rounded-xl focus:outline-none focus:ring-2 focus:ring-ring text-foreground" />
           </div>
         </div>
 
-        {/* Table com barra de rolagem interna */}
+        {/* Table */}
         <div className="bg-card border-2 border-border rounded-2xl overflow-hidden shadow-xl">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-muted-foreground">
@@ -264,12 +298,11 @@ export default function ITRPage({ month }: { month: string }) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              {/* max-h + overflow-y-auto = barra de rolagem interna da tabela */}
               <div className="max-h-[500px] overflow-y-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted border-b border-border sticky top-0 z-10">
                     <tr>
-                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map((h) => (
+                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -277,7 +310,7 @@ export default function ITRPage({ month }: { month: string }) {
                   <tbody className="divide-y divide-border">
                     {paginated.length === 0 ? (
                       <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração ITR encontrada</td></tr>
-                    ) : paginated.map((d) => (
+                    ) : paginated.map(d => (
                       <tr key={d.id} className="hover:bg-muted/30 transition-colors">
                         {editingId === d.id && editFormData ? (
                           <>
@@ -285,7 +318,7 @@ export default function ITRPage({ month }: { month: string }) {
                               <select value={editFormData.collaborator}
                                 onChange={(e) => setEditFormData({ ...editFormData, collaborator: e.target.value })}
                                 className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
-                                {colaboradores.map((c) => <option key={c.id} value={c.name}>{c.name}</option>)}
+                                {colaboradores.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                               </select>
                             </td>
                             <td className="px-4 py-2">
@@ -339,7 +372,6 @@ export default function ITRPage({ month }: { month: string }) {
                           </>
                         ) : (
                           <>
-                            {/* Foto + nome do colaborador */}
                             <td className="px-4 py-3">
                               <div className="flex items-center gap-2">
                                 <Avatar name={d.collaborator} photo={getColabPhoto(d.collaborator)} />
@@ -355,7 +387,6 @@ export default function ITRPage({ month }: { month: string }) {
                             <td className="px-4 py-3">
                               <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
                             </td>
-                            {/* Mês do pagamento — destaca em accent se diferente do mês de lançamento */}
                             <td className="px-4 py-3 text-xs text-muted-foreground">
                               {d.statusPagamento === 'PAGO' && d.paymentMonth && d.paymentMonth !== d.month
                                 ? <span className="text-accent font-medium">{d.paymentMonth}</span>
@@ -365,7 +396,7 @@ export default function ITRPage({ month }: { month: string }) {
                             <td className="px-4 py-3">
                               <div className="flex gap-1">
                                 <button onClick={() => handleEdit(d)} className="p-1.5 bg-primary/10 text-primary rounded-lg hover:bg-primary/20 transition-colors"><Edit className="w-3.5 h-3.5" /></button>
-                                <button onClick={() => handleDelete(d.id)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
+                                <button onClick={() => askDelete(d.id, d.cliente)} className="p-1.5 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>
                               </div>
                             </td>
                           </>
@@ -378,19 +409,18 @@ export default function ITRPage({ month }: { month: string }) {
             </div>
           )}
 
-          {/* Pagination */}
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/30">
               <p className="text-sm text-muted-foreground">
                 Mostrando {((currentPage - 1) * itemsPerPage) + 1}–{Math.min(currentPage * itemsPerPage, filtered.length)} de {filtered.length}
               </p>
               <div className="flex gap-2">
-                <button onClick={() => setCurrentPage((p) => Math.max(1, p - 1))} disabled={currentPage === 1}
+                <button onClick={() => setCurrentPage(p => Math.max(1, p - 1))} disabled={currentPage === 1}
                   className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <ChevronLeft className="w-4 h-4" />
                 </button>
                 <span className="px-3 py-2 text-sm font-medium">{currentPage} / {totalPages}</span>
-                <button onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
+                <button onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))} disabled={currentPage === totalPages}
                   className="p-2 rounded-lg border border-border hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                   <ChevronRight className="w-4 h-4" />
                 </button>

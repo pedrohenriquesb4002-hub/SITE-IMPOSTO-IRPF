@@ -2,11 +2,17 @@ import { useState, useEffect } from 'react'
 import { Plus, Trash2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type Collaborator } from '../../lib/store'
+import ConfirmModal from './ConfirmModal'
 
 export default function ColaboradoresPage() {
   const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [loading, setLoading] = useState(true)
   const [nome, setNome] = useState('')
+
+  // Modal de confirmação
+  const [modalOpen, setModalOpen] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [deletingName, setDeletingName] = useState('')
 
   useEffect(() => {
     api.collaborators.list()
@@ -27,19 +33,43 @@ export default function ColaboradoresPage() {
     }
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm('Excluir colaborador? Isso não remove as declarações associadas.')) return
+  const askDelete = (id: number, name: string) => {
+    setDeletingId(id)
+    setDeletingName(name)
+    setModalOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (deletingId === null) return
+    setModalOpen(false)
     try {
-      await api.collaborators.remove(id)
-      setColaboradores((p) => p.filter((c) => c.id !== id))
-      toast.success('Removido')
-    } catch { toast.error('Erro ao remover') }
+      await api.collaborators.remove(deletingId)
+      setColaboradores((p) => p.filter((c) => c.id !== deletingId))
+      toast.success('Colaborador removido')
+    } catch {
+      toast.error('Erro ao remover')
+    } finally {
+      setDeletingId(null)
+      setDeletingName('')
+    }
   }
 
   const total = colaboradores.length
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
+
+      <ConfirmModal
+        open={modalOpen}
+        variant="danger"
+        title="Excluir colaborador"
+        message={`Tem certeza que deseja excluir "${deletingName}"? Esta ação não pode ser desfeita. As declarações associadas a este colaborador não serão removidas.`}
+        confirmLabel="Excluir"
+        cancelLabel="Cancelar"
+        onConfirm={confirmDelete}
+        onCancel={() => { setModalOpen(false); setDeletingId(null) }}
+      />
+
       <div className="max-w-4xl mx-auto space-y-8">
         <div>
           <h2 className="text-3xl font-bold text-foreground tracking-tight">Colaboradores</h2>
@@ -79,18 +109,12 @@ export default function ColaboradoresPage() {
             <h3 className="text-xl font-bold text-card-foreground">Novo Colaborador</h3>
           </div>
           <div className="flex gap-4">
-            <input
-              type="text"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
+            <input type="text" value={nome} onChange={(e) => setNome(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
               placeholder="Nome do colaborador"
-              className="flex-1 px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-            />
-            <button
-              onClick={handleAdd}
-              className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 font-semibold flex items-center gap-2 whitespace-nowrap"
-            >
+              className="flex-1 px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground" />
+            <button onClick={handleAdd}
+              className="px-6 py-2.5 bg-primary text-primary-foreground rounded-xl hover:opacity-90 transition-all shadow-lg shadow-primary/20 font-semibold flex items-center gap-2 whitespace-nowrap">
               <Plus className="w-4 h-4" /> Adicionar
             </button>
           </div>
@@ -119,8 +143,10 @@ export default function ColaboradoresPage() {
               {colaboradores.map((c, i) => (
                 <li key={c.id} className="flex items-center justify-between px-6 py-4 hover:bg-muted/30 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm flex-shrink-0">
-                      {i + 1}
+                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold text-sm flex-shrink-0 overflow-hidden">
+                      {c.photo
+                        ? <img src={c.photo} alt={c.name} className="w-full h-full object-cover" />
+                        : <span>{i + 1}</span>}
                     </div>
                     <div>
                       <p className="font-semibold text-foreground">{c.name}</p>
@@ -129,10 +155,8 @@ export default function ColaboradoresPage() {
                       </p>
                     </div>
                   </div>
-                  <button
-                    onClick={() => handleDelete(c.id)}
-                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors"
-                  >
+                  <button onClick={() => askDelete(c.id, c.name)}
+                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </li>
