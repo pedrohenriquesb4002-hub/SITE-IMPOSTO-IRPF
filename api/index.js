@@ -463,8 +463,17 @@ export default async function handler(req, res) {
       `
 
       // Sincroniza nome no collaborators
-      if (name?.trim() && oldName && oldName !== name.trim()) {
-        await sql`UPDATE collaborators SET name = ${name.trim()} WHERE name = ${oldName}`
+      const oldNameValue = oldUser[0]?.displayName || oldUser[0]?.name
+      if (name?.trim() && oldNameValue && oldNameValue !== name.trim()) {
+        await sql`UPDATE collaborators SET name = ${name.trim()} WHERE name = ${oldNameValue}`
+      }
+
+      // Sincroniza foto no collaborators para aparecer nos lancamentos
+      if (photo !== undefined) {
+        const currentName = name?.trim() || oldNameValue
+        if (currentName) {
+          await sql`UPDATE collaborators SET photo = ${photo || null} WHERE name = ${currentName}`
+        }
       }
 
       await audit(sql, p.id, 'profile_updated', req)
@@ -642,7 +651,15 @@ export default async function handler(req, res) {
         }
       }
       if (req.method === 'GET') {
-        const rows = await sql`SELECT * FROM collaborators WHERE "userId" = ${sharedUserId} ORDER BY name ASC`
+        const rows = await sql`
+          SELECT
+            c.*,
+            COALESCE(c.photo, u.photo) AS photo
+          FROM collaborators c
+          LEFT JOIN users u ON (u."displayName" = c.name OR u.name = c.name)
+          WHERE c."userId" = ${sharedUserId}
+          ORDER BY c.name ASC
+        `
         return res.status(200).json(rows)
       }
       if (req.method === 'POST') {
