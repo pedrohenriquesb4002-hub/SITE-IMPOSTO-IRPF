@@ -569,8 +569,9 @@ export default async function handler(req, res) {
         const fixo = s.valorFixoSocioIRPF ?? s.valorFixoSocio
         const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido, clienteType, statusPagamento, pct, fixo) : 0
         const pm = statusPagamento === 'PAGO' ? (paymentMonth || month) : null
-        const [row] = await sql`INSERT INTO declarations ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth")
-          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}) RETURNING *`
+        const pm2 = req.body?.paymentDate || null
+        const [row] = await sql`INSERT INTO declarations ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth", "paymentDate")
+          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}, ${pm2}) RETURNING *`
         return res.status(201).json(row)
       }
     }
@@ -629,8 +630,9 @@ export default async function handler(req, res) {
         const fixo = s.valorFixoSocioITR ?? s.valorFixoSocio
         const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido, clienteType, statusPagamento, pct, fixo) : 0
         const pm = statusPagamento === 'PAGO' ? (paymentMonth || month) : null
-        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth")
-          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}) RETURNING *`
+        const pm2 = req.body?.paymentDate || null
+        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth", "paymentDate")
+          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}, ${pm2}) RETURNING *`
         return res.status(201).json(row)
       }
     }

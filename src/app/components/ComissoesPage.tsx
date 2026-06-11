@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, DollarSign, ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { TrendingUp, DollarSign, ChevronUp, ChevronDown, ChevronsUpDown, Filter, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api } from '../../lib/store'
 
@@ -11,13 +11,24 @@ interface ColCommission {
 type SortField = 'name' | 'comissao' | null
 type SortDir = 'asc' | 'desc'
 
+const ALL_MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+const IRPF_MONTHS = ['Março', 'Abril', 'Maio']
+const ITR_MONTHS = ['Agosto', 'Setembro']
+
 export default function ComissoesPage() {
   const [activeTab, setActiveTab] = useState<'irpf' | 'itr'>('irpf')
   const [irpfData, setIrpfData] = useState<ColCommission[]>([])
   const [itrData, setItrData] = useState<ColCommission[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Ordenação
   const [sortField, setSortField] = useState<SortField>(null)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+
+  // Filtro de mês
+  const [filterMonth, setFilterMonth] = useState<string>('todos')
+  const [filterType, setFilterType] = useState<'lancamento' | 'pagamento'>('lancamento')
 
   useEffect(() => {
     const load = async () => {
@@ -32,12 +43,28 @@ export default function ComissoesPage() {
     load()
   }, [])
 
-  const irpfMonths = ['Março', 'Abril', 'Maio']
-  const itrMonths = ['Agosto', 'Setembro']
+  // Reset filtro ao trocar aba
+  useEffect(() => { setFilterMonth('todos') }, [activeTab])
+
+  const activeMonths = activeTab === 'irpf' ? IRPF_MONTHS : ITR_MONTHS
+  const activeData = activeTab === 'irpf' ? irpfData : itrData
+
+  // Meses disponíveis para filtro: meses da aba + qualquer paymentMonth diferente nos dados
+  const availableMonths = (() => {
+    const set = new Set<string>(activeMonths)
+    activeData.forEach(col => Object.keys(col.months).forEach(m => set.add(m)))
+    return ALL_MONTHS.filter(m => set.has(m))
+  })()
+
+  // Filtra e calcula totais por mês selecionado
+  const getMonthsToShow = (): string[] => {
+    if (filterMonth === 'todos') return activeMonths
+    return [filterMonth]
+  }
 
   const calcTotal = (data: ColCommission[], months: string[]) =>
     data.reduce((acc, col) => {
-      months.forEach((m) => {
+      months.forEach(m => {
         const d = col.months[m] || { vendas: 0, recebido: 0, comissao: 0 }
         acc.vendas += d.vendas; acc.recebido += d.recebido; acc.comissao += d.comissao
       })
@@ -51,39 +78,32 @@ export default function ComissoesPage() {
     }, { vendas: 0, recebido: 0, comissao: 0 })
 
   const handleSort = (field: SortField) => {
-    if (sortField === field) {
-      setSortDir(d => d === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortField(field)
-      setSortDir('asc')
-    }
+    if (sortField === field) setSortDir(d => d === 'asc' ? 'desc' : 'asc')
+    else { setSortField(field); setSortDir('asc') }
   }
 
-  const sortData = (data: ColCommission[], months: string[]) => {
+  const monthsToShow = getMonthsToShow()
+
+  const sortedData = (() => {
+    const data = [...activeData]
     if (!sortField) return data
-    return [...data].sort((a, b) => {
+    return data.sort((a, b) => {
       if (sortField === 'name') {
         const cmp = a.collaborator.localeCompare(b.collaborator, 'pt-BR')
         return sortDir === 'asc' ? cmp : -cmp
       }
-      if (sortField === 'comissao') {
-        const ca = getCollabTotal(a, months).comissao
-        const cb = getCollabTotal(b, months).comissao
-        return sortDir === 'asc' ? ca - cb : cb - ca
-      }
-      return 0
+      const ca = getCollabTotal(a, monthsToShow).comissao
+      const cb = getCollabTotal(b, monthsToShow).comissao
+      return sortDir === 'asc' ? ca - cb : cb - ca
     })
-  }
+  })()
+
+  const activeTotal = calcTotal(activeData, monthsToShow)
 
   const SortIcon = ({ field }: { field: SortField }) => {
     if (sortField !== field) return <ChevronsUpDown className="w-3.5 h-3.5 opacity-40" />
     return sortDir === 'asc' ? <ChevronUp className="w-3.5 h-3.5 text-primary" /> : <ChevronDown className="w-3.5 h-3.5 text-primary" />
   }
-
-  const totalIRPF = calcTotal(irpfData, irpfMonths)
-  const totalITR = calcTotal(itrData, itrMonths)
-  const sortedIRPF = sortData(irpfData, irpfMonths)
-  const sortedITR = sortData(itrData, itrMonths)
 
   if (loading) return (
     <div className="flex items-center justify-center min-h-screen">
@@ -93,10 +113,6 @@ export default function ComissoesPage() {
       </svg>
     </div>
   )
-
-  const activeData = activeTab === 'irpf' ? sortedIRPF : sortedITR
-  const activeMonths = activeTab === 'irpf' ? irpfMonths : itrMonths
-  const activeTotal = activeTab === 'irpf' ? totalIRPF : totalITR
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
@@ -108,7 +124,7 @@ export default function ComissoesPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border">
-          {(['irpf', 'itr'] as const).map((tab) => (
+          {(['irpf', 'itr'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               className={`px-6 py-3 text-sm font-semibold transition-all rounded-t-lg ${
                 activeTab === tab
@@ -120,11 +136,13 @@ export default function ComissoesPage() {
           ))}
         </div>
 
-        {/* Cards resumo — melhorados (ATT 3) */}
+        {/* Cards resumo */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="relative overflow-hidden bg-gradient-to-br from-primary to-primary/90 rounded-2xl p-6 shadow-xl shadow-primary/20">
             <div className="absolute top-0 right-0 w-32 h-32 bg-white/5 rounded-full -translate-y-8 translate-x-8" />
-            <p className="text-xs font-bold text-white/80 uppercase tracking-widest mb-1">Total de Vendas</p>
+            <p className="text-xs font-bold text-white/80 uppercase tracking-widest mb-1">
+              Total de Vendas {filterMonth !== 'todos' ? `— ${filterMonth}` : ''}
+            </p>
             <p className="text-5xl font-black text-white mt-2">{activeTotal.vendas}</p>
             <p className="text-xs text-white/60 mt-3">{activeTab === 'irpf' ? 'Março · Abril · Maio' : 'Agosto · Setembro'}</p>
             <TrendingUp className="absolute bottom-4 right-4 w-10 h-10 text-white/20" />
@@ -145,10 +163,94 @@ export default function ComissoesPage() {
           </div>
         </div>
 
-        {/* Tabela com filtros A-Z e maior comissão (ATT 6) */}
+        {/* ── FILTROS DE MÊS ── */}
+        <div className="bg-card border-2 border-border rounded-2xl p-5 shadow-xl">
+          <div className="flex items-center gap-3 mb-4">
+            <div className="w-8 h-8 bg-primary/10 rounded-lg flex items-center justify-center">
+              <Filter className="w-4 h-4 text-primary" />
+            </div>
+            <h3 className="font-semibold text-foreground text-sm">Filtrar por Mês</h3>
+            {filterMonth !== 'todos' && (
+              <button onClick={() => setFilterMonth('todos')}
+                className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg border border-border hover:bg-muted transition-all">
+                <X className="w-3.5 h-3.5" /> Limpar filtro
+              </button>
+            )}
+          </div>
+
+          {/* Tipo de filtro */}
+          <div className="flex gap-2 mb-4">
+            <button
+              onClick={() => setFilterType('lancamento')}
+              className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                filterType === 'lancamento'
+                  ? 'bg-primary text-primary-foreground shadow-md'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}>
+              Mês de Lançamento
+            </button>
+            <button
+              onClick={() => setFilterType('pagamento')}
+              className={`px-4 py-2 text-xs font-semibold rounded-lg transition-all ${
+                filterType === 'pagamento'
+                  ? 'bg-accent text-accent-foreground shadow-md'
+                  : 'bg-muted text-muted-foreground hover:text-foreground'
+              }`}>
+              Mês de Pagamento (Comissão)
+            </button>
+          </div>
+
+          {/* Botões de mês */}
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={() => setFilterMonth('todos')}
+              className={`px-4 py-2 text-xs font-semibold rounded-xl transition-all ${
+                filterMonth === 'todos'
+                  ? 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
+                  : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
+              }`}>
+              Todos os meses
+            </button>
+            {availableMonths.map(m => {
+              const isBase = activeMonths.includes(m)
+              const isPayment = !isBase
+              return (
+                <button key={m}
+                  onClick={() => setFilterMonth(m)}
+                  className={`px-4 py-2 text-xs font-semibold rounded-xl transition-all flex items-center gap-1.5 ${
+                    filterMonth === m
+                      ? isPayment
+                        ? 'bg-accent text-accent-foreground shadow-md shadow-accent/20'
+                        : 'bg-primary text-primary-foreground shadow-md shadow-primary/20'
+                      : 'bg-muted text-muted-foreground hover:text-foreground hover:bg-muted/80'
+                  }`}>
+                  {m}
+                  {isPayment && (
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
+                      filterMonth === m ? 'bg-white/20' : 'bg-accent/20 text-accent'
+                    }`}>pgto</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {filterMonth !== 'todos' && (
+            <p className="text-xs text-muted-foreground mt-3">
+              {activeMonths.includes(filterMonth)
+                ? `Mostrando declarações lançadas em ${filterMonth}`
+                : `Mostrando comissões pagas em ${filterMonth} (pagamento fora do mês de lançamento)`}
+            </p>
+          )}
+        </div>
+
+        {/* Tabela */}
         <div className="bg-card border-2 border-border rounded-2xl overflow-hidden shadow-xl">
           <div className="px-6 py-4 border-b border-border bg-muted/30 flex items-center justify-between">
-            <h3 className="font-semibold text-foreground">Detalhamento por Colaborador</h3>
+            <h3 className="font-semibold text-foreground">
+              Detalhamento por Colaborador
+              {filterMonth !== 'todos' && <span className="ml-2 text-sm text-primary font-normal">— {filterMonth}</span>}
+            </h3>
             <p className="text-xs text-muted-foreground">Clique nas setas para ordenar</p>
           </div>
           <div className="overflow-x-auto">
@@ -163,15 +265,15 @@ export default function ComissoesPage() {
                       </button>
                     </th>
                     <th colSpan={3} className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase border-x border-border">
-                      Total ({activeMonths.length} {activeMonths.length === 1 ? 'mês' : 'meses'})
+                      {filterMonth === 'todos' ? `Total (${monthsToShow.length} ${monthsToShow.length === 1 ? 'mês' : 'meses'})` : filterMonth}
                     </th>
-                    {activeMonths.map((m) => (
+                    {filterMonth === 'todos' && monthsToShow.map(m => (
                       <th key={m} colSpan={3} className="px-6 py-4 text-center text-xs font-semibold text-muted-foreground uppercase border-r border-border">{m}</th>
                     ))}
                   </tr>
                   <tr className="bg-muted/50">
                     <th className="px-6 py-3 sticky left-0 bg-muted/50" />
-                    {[...Array(activeMonths.length + 1)].map((_, i) => (
+                    {[...Array(filterMonth === 'todos' ? monthsToShow.length + 1 : 1)].map((_, i) => (
                       <>
                         <th key={`v${i}`} className="px-4 py-3 text-center text-xs text-muted-foreground">Vendas</th>
                         <th key={`r${i}`} className="px-4 py-3 text-center text-xs text-muted-foreground">Recebido</th>
@@ -188,13 +290,13 @@ export default function ComissoesPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
-                  {activeData.length === 0 ? (
-                    <tr><td colSpan={3 + activeMonths.length * 3 + 1} className="px-4 py-16 text-center text-muted-foreground">
+                  {sortedData.length === 0 ? (
+                    <tr><td colSpan={3 + monthsToShow.length * 3 + 1} className="px-4 py-16 text-center text-muted-foreground">
                       <DollarSign className="w-10 h-10 mx-auto mb-2 opacity-20" />
                       Sem dados de comissão
                     </td></tr>
-                  ) : activeData.map((col, i) => {
-                    const totals = getCollabTotal(col, activeMonths)
+                  ) : sortedData.map((col, i) => {
+                    const totals = getCollabTotal(col, monthsToShow)
                     return (
                       <tr key={i} className="hover:bg-muted/20 transition-colors group">
                         <td className="px-6 py-4 sticky left-0 bg-card group-hover:bg-muted/20 transition-colors">
@@ -206,15 +308,15 @@ export default function ComissoesPage() {
                           </div>
                         </td>
                         {/* Total */}
-                        <td className="px-4 py-4 text-center font-medium text-foreground">{totals.vendas}</td>
-                        <td className="px-4 py-4 text-center text-foreground">R$ {(totals.recebido / 100).toFixed(2)}</td>
+                        <td className="px-4 py-4 text-center font-medium text-foreground">{totals.vendas || '—'}</td>
+                        <td className="px-4 py-4 text-center text-foreground">{totals.recebido ? `R$ ${(totals.recebido / 100).toFixed(2)}` : '—'}</td>
                         <td className="px-4 py-4 text-center border-r border-border">
                           <span className="inline-flex items-center gap-1 px-3 py-1 bg-success/10 text-success rounded-full text-xs font-bold ring-1 ring-success/20">
                             R$ {(totals.comissao / 100).toFixed(2)}
                           </span>
                         </td>
-                        {/* Por mês */}
-                        {activeMonths.map((m) => {
+                        {/* Por mês (só quando filtro = todos) */}
+                        {filterMonth === 'todos' && monthsToShow.map(m => {
                           const d = col.months[m] || { vendas: 0, recebido: 0, comissao: 0 }
                           return (
                             <>
@@ -237,25 +339,22 @@ export default function ComissoesPage() {
           </div>
         </div>
 
-        {/* Regras */}
+        {/* Legenda */}
         <div className="bg-primary/5 border border-primary/20 rounded-xl p-5">
           <h3 className="text-sm font-bold text-foreground mb-3">📋 Regras de Comissão</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs text-muted-foreground">
             <div className="bg-card rounded-lg p-3 border border-border">
-              <p className="font-semibold text-foreground mb-1">Sócio</p>
-              <p>R$ 5,00 fixo por declaração</p>
+              <p className="font-semibold text-foreground mb-1">Sócio</p><p>Valor fixo por declaração</p>
             </div>
             <div className="bg-card rounded-lg p-3 border border-border">
-              <p className="font-semibold text-foreground mb-1">Diversos</p>
-              <p>10% do valor recebido</p>
+              <p className="font-semibold text-foreground mb-1">Diversos</p><p>% do valor recebido</p>
             </div>
             <div className="bg-card rounded-lg p-3 border border-border">
-              <p className="font-semibold text-foreground mb-1">Doação</p>
-              <p>Sem comissão</p>
+              <p className="font-semibold text-foreground mb-1">Doação</p><p>Sem comissão</p>
             </div>
             <div className="bg-card rounded-lg p-3 border border-border">
-              <p className="font-semibold text-foreground mb-1">Contagem</p>
-              <p>Apenas status PAGO</p>
+              <p className="font-semibold text-foreground mb-1">Mês pgto</p>
+              <p>Comissão entra no mês em que foi pago</p>
             </div>
           </div>
         </div>

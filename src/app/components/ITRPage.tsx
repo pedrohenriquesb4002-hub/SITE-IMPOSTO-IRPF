@@ -4,6 +4,7 @@ import { toast } from 'sonner'
 import { api, type Declaration, type Collaborator } from '../../lib/store'
 import { formatCPF } from '../../lib/utils'
 import ConfirmModal from './ConfirmModal'
+import DatePicker from './DatePicker'
 
 const ITR_MONTHS = ['Agosto', 'Setembro']
 
@@ -15,7 +16,7 @@ export default function ITRPage({ month }: { month: string }) {
     colaborador: '', cliente: '', cpf: '', valor: '',
     tipo: 'Sócio' as 'Sócio' | 'Diversos',
     status: 'AGUARDANDO' as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
-    paymentMonth: month,
+    paymentDate: '',  // DD/MM/AAAA
   })
   const [filterColaborador, setFilterColaborador] = useState('')
   const [filterCliente, setFilterCliente] = useState('')
@@ -45,7 +46,17 @@ export default function ITRPage({ month }: { month: string }) {
   }, [month])
 
   useEffect(() => { load() }, [load])
-  useEffect(() => { setCurrentPage(1); setFormData(f => ({ ...f, paymentMonth: month })) }, [month])
+  useEffect(() => { setCurrentPage(1); setFormData(f => ({ ...f, paymentDate: '' })) }, [month])
+
+
+  const dateToPaymentMonth = (dateStr: string): string => {
+    const months = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                    'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro']
+    const parts = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+    if (!parts) return month
+    const m = parseInt(parts[2]) - 1
+    return months[m] ?? month
+  }
 
   const getColabPhoto = (name: string) =>
     colaboradores.find(c => c.name === name)?.photo || null
@@ -63,10 +74,10 @@ export default function ITRPage({ month }: { month: string }) {
         valorRecebido: Math.round(parseFloat(formData.valor) * 100),
         clienteType: formData.tipo,
         statusPagamento: formData.status,
-        paymentMonth: formData.status === 'PAGO' ? formData.paymentMonth : null,
+        paymentMonth: formData.status === 'PAGO' && formData.paymentDate ? dateToPaymentMonth(formData.paymentDate) : null,
       })
       setDeclaracoes(prev => [...prev, created])
-      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentMonth: month })
+      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentDate: '' })
       toast.success('Declaração ITR adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
@@ -106,6 +117,7 @@ export default function ITRPage({ month }: { month: string }) {
         clienteType: editFormData.clienteType,
         statusPagamento: editFormData.statusPagamento,
         paymentMonth: editFormData.statusPagamento === 'PAGO' ? (editFormData.paymentMonth || month) : null,
+        paymentDate: editFormData.paymentDate,
       })
       setDeclaracoes(prev => prev.map(d => d.id === editingId ? updated : d))
       setEditingId(null); setEditFormData(null)
@@ -253,14 +265,12 @@ export default function ITRPage({ month }: { month: string }) {
             </div>
             {formData.status === 'PAGO' && (
               <div>
-                <label className="block text-xs font-medium text-foreground mb-2">
-                  Mês do Pagamento <span className="text-accent">(comissão entra neste mês)</span>
-                </label>
-                <select value={formData.paymentMonth}
-                  onChange={(e) => setFormData({ ...formData, paymentMonth: e.target.value })}
-                  className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
-                  {ITR_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                </select>
+                <DatePicker
+                  label="Data do Pagamento (comissão entra neste mês)"
+                  value={formData.paymentDate}
+                  onChange={(v) => setFormData({ ...formData, paymentDate: v })}
+                  placeholder="DD/MM/AAAA"
+                />
               </div>
             )}
           </div>
@@ -353,13 +363,17 @@ export default function ITRPage({ month }: { month: string }) {
                                 <option value="DOAÇÃO">Doação</option>
                               </select>
                             </td>
-                            <td className="px-4 py-2">
+                            <td className="px-4 py-2 min-w-[200px]">
                               {editFormData.statusPagamento === 'PAGO' && (
-                                <select value={editFormData.paymentMonth || month}
-                                  onChange={(e) => setEditFormData({ ...editFormData, paymentMonth: e.target.value })}
-                                  className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground">
-                                  {ITR_MONTHS.map(m => <option key={m} value={m}>{m}</option>)}
-                                </select>
+                                <DatePicker
+                                  value={editFormData.paymentDate || null}
+                                  onChange={(v) => setEditFormData({
+                                    ...editFormData,
+                                    paymentDate: v,
+                                    paymentMonth: v ? dateToPaymentMonth(v) : (editFormData.paymentMonth || month)
+                                  })}
+                                  placeholder="DD/MM/AAAA"
+                                />
                               )}
                             </td>
                             <td className="px-4 py-2 text-muted-foreground text-xs">—</td>
@@ -388,9 +402,11 @@ export default function ITRPage({ month }: { month: string }) {
                               <span className={`px-2.5 py-1 rounded-full text-xs font-medium border ${statusColor(d.statusPagamento)}`}>{statusLabel(d.statusPagamento)}</span>
                             </td>
                             <td className="px-4 py-3 text-xs text-muted-foreground">
-                              {d.statusPagamento === 'PAGO' && d.paymentMonth && d.paymentMonth !== d.month
-                                ? <span className="text-accent font-medium">{d.paymentMonth}</span>
-                                : d.statusPagamento === 'PAGO' ? d.month : '—'}
+                              {d.statusPagamento === 'PAGO'
+                                ? <span className={d.paymentMonth && d.paymentMonth !== d.month ? 'text-accent font-medium' : ''}>
+                                    {(d as any).paymentDate || d.paymentMonth || d.month}
+                                  </span>
+                                : '—'}
                             </td>
                             <td className="px-4 py-3 text-success font-medium">R$ {((d.comissao || 0) / 100).toFixed(2)}</td>
                             <td className="px-4 py-3">

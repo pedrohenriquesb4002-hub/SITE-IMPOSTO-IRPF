@@ -147,6 +147,7 @@ export interface Declaration {
   id: number
   month: string
   paymentMonth?: string | null
+  paymentDate?: string | null   // DD/MM/AAAA — data exata do pagamento
   collaborator: string
   cpfCliente?: string
   cliente: string
