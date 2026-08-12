@@ -155,6 +155,7 @@ export interface Declaration {
   clienteType: 'Sócio' | 'Diversos'
   comissao?: number
   statusPagamento: 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO'
+  quantidadeFazendas?: number   // ITR: qtd. de propriedades/fazendas no nome do cliente
   createdAt?: string
   updatedAt?: string
 }
@@ -187,6 +188,7 @@ export interface Quota {
   quantidadeCotas: number
   cotasEnviadas: number
   meioEnvio: string
+  categoria?: 'IRPF' | 'ITR'
   createdAt?: string
   updatedAt?: string
 }

@@ -17,6 +17,7 @@ export default function ITRPage({ month }: { month: string }) {
     tipo: 'Sócio' as 'Sócio' | 'Diversos',
     status: 'AGUARDANDO' as 'PAGO' | 'AGUARDANDO' | 'DOAÇÃO',
     paymentDate: '',  // DD/MM/AAAA
+    quantidadeFazendas: '1',  // qtd. de fazendas/propriedades no nome do cliente
   })
   const [filterColaborador, setFilterColaborador] = useState('')
   const [filterCliente, setFilterCliente] = useState('')
@@ -75,9 +76,10 @@ export default function ITRPage({ month }: { month: string }) {
         clienteType: formData.tipo,
         statusPagamento: formData.status,
         paymentMonth: formData.status === 'PAGO' && formData.paymentDate ? dateToPaymentMonth(formData.paymentDate) : null,
+        quantidadeFazendas: Math.max(1, parseInt(formData.quantidadeFazendas) || 1),
       })
       setDeclaracoes(prev => [...prev, created])
-      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentDate: '' })
+      setFormData({ colaborador: '', cliente: '', cpf: '', valor: '', tipo: 'Sócio', status: 'AGUARDANDO', paymentDate: '', quantidadeFazendas: '1' })
       toast.success('Declaração ITR adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
@@ -118,6 +120,7 @@ export default function ITRPage({ month }: { month: string }) {
         statusPagamento: editFormData.statusPagamento,
         paymentMonth: editFormData.statusPagamento === 'PAGO' ? (editFormData.paymentMonth || month) : null,
         paymentDate: editFormData.paymentDate,
+        quantidadeFazendas: Math.max(1, editFormData.quantidadeFazendas || 1),
       })
       setDeclaracoes(prev => prev.map(d => d.id === editingId ? updated : d))
       setEditingId(null); setEditFormData(null)
@@ -133,6 +136,7 @@ export default function ITRPage({ month }: { month: string }) {
   const paginated = filtered.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
   const totalRecebido = filtered.reduce((s, d) => s + (d.valorRecebido || 0), 0) / 100
   const totalComissao = filtered.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0) / 100
+  const totalFazendas = filtered.reduce((s, d) => s + (d.quantidadeFazendas ?? 1), 0)
 
   const statusColor = (s: string) => {
     if (s === 'PAGO') return 'bg-success/10 text-success border-success/20'
@@ -190,7 +194,7 @@ export default function ITRPage({ month }: { month: string }) {
         </div>
 
         {/* Summary */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="bg-gradient-to-br from-primary to-primary/80 rounded-2xl p-5 text-primary-foreground shadow-xl shadow-primary/20">
             <p className="text-xs font-bold uppercase tracking-wide opacity-80">Declarações ITR</p>
             <p className="text-3xl font-bold mt-1">{filtered.length}</p>
@@ -198,6 +202,10 @@ export default function ITRPage({ month }: { month: string }) {
           <div className="bg-gradient-to-br from-accent to-accent/80 rounded-2xl p-5 text-accent-foreground shadow-xl shadow-accent/20">
             <p className="text-xs font-bold uppercase tracking-wide opacity-80">Total Recebido</p>
             <p className="text-3xl font-bold mt-1">R$ {totalRecebido.toFixed(2)}</p>
+          </div>
+          <div className="bg-gradient-to-br from-chart-2 to-chart-2/80 rounded-2xl p-5 text-white shadow-xl shadow-chart-2/20">
+            <p className="text-xs font-bold uppercase tracking-wide opacity-80">Total de Fazendas</p>
+            <p className="text-3xl font-bold mt-1">{totalFazendas}</p>
           </div>
           <div className="bg-gradient-to-br from-success to-success/80 rounded-2xl p-5 text-success-foreground shadow-xl shadow-success/20">
             <p className="text-xs font-bold uppercase tracking-wide opacity-80">Comissões (Pago)</p>
@@ -243,6 +251,13 @@ export default function ITRPage({ month }: { month: string }) {
                 onChange={(e) => setFormData({ ...formData, valor: e.target.value })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
                 placeholder="0,00" min="0" step="0.01" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-2">Qtd. Fazendas/Propriedades</label>
+              <input type="number" value={formData.quantidadeFazendas}
+                onChange={(e) => setFormData({ ...formData, quantidadeFazendas: e.target.value })}
+                className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
+                placeholder="1" min="1" step="1" />
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Tipo</label>
@@ -312,14 +327,14 @@ export default function ITRPage({ month }: { month: string }) {
                 <table className="w-full text-sm">
                   <thead className="bg-muted border-b border-border sticky top-0 z-10">
                     <tr>
-                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map(h => (
+                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Fazendas', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {paginated.length === 0 ? (
-                      <tr><td colSpan={9} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração ITR encontrada</td></tr>
+                      <tr><td colSpan={10} className="px-4 py-12 text-center text-muted-foreground">Nenhuma declaração ITR encontrada</td></tr>
                     ) : paginated.map(d => (
                       <tr key={d.id} className="hover:bg-muted/30 transition-colors">
                         {editingId === d.id && editFormData ? (
@@ -345,6 +360,11 @@ export default function ITRPage({ month }: { month: string }) {
                               <input type="number" value={editFormData.valorRecebido / 100}
                                 onChange={(e) => setEditFormData({ ...editFormData, valorRecebido: Math.round(parseFloat(e.target.value) * 100) })}
                                 className="w-24 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
+                            </td>
+                            <td className="px-4 py-2">
+                              <input type="number" value={editFormData.quantidadeFazendas ?? 1} min={1} step={1}
+                                onChange={(e) => setEditFormData({ ...editFormData, quantidadeFazendas: Math.max(1, parseInt(e.target.value) || 1) })}
+                                className="w-16 px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" />
                             </td>
                             <td className="px-4 py-2">
                               <select value={editFormData.clienteType}
@@ -395,6 +415,11 @@ export default function ITRPage({ month }: { month: string }) {
                             <td className="px-4 py-3 text-foreground">{d.cliente}</td>
                             <td className="px-4 py-3 text-muted-foreground font-mono text-xs">{d.cpfCliente}</td>
                             <td className="px-4 py-3 text-foreground font-medium">R$ {((d.valorRecebido || 0) / 100).toFixed(2)}</td>
+                            <td className="px-4 py-3">
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium border bg-accent/10 text-accent border-accent/20">
+                                {d.quantidadeFazendas ?? 1} {(d.quantidadeFazendas ?? 1) === 1 ? 'fazenda' : 'fazendas'}
+                              </span>
+                            </td>
                             <td className="px-4 py-3">
                               <span className="px-2 py-0.5 rounded-full text-xs border bg-muted text-muted-foreground">{d.clienteType}</span>
                             </td>

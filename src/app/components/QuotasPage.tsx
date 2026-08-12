@@ -15,6 +15,7 @@ export default function QuotasPage() {
     cliente: '',
     quantidadeCotas: '',
     meioEnvio: 'WhatsApp',
+    categoria: 'IRPF' as 'IRPF' | 'ITR',
   })
 
   // Modal
@@ -40,9 +41,10 @@ export default function QuotasPage() {
         quantidadeCotas: parseInt(formData.quantidadeCotas),
         cotasEnviadas: 0,
         meioEnvio: formData.meioEnvio,
+        categoria: formData.categoria,
       })
       setQuotas(p => [...p, created])
-      setFormData({ colaborador: '', cliente: '', quantidadeCotas: '', meioEnvio: 'WhatsApp' })
+      setFormData({ colaborador: '', cliente: '', quantidadeCotas: '', meioEnvio: 'WhatsApp', categoria: formData.categoria })
       toast.success('Quota adicionada')
     } catch (err: unknown) { toast.error(err instanceof Error ? err.message : 'Erro') }
   }
@@ -139,7 +141,20 @@ export default function QuotasPage() {
             </div>
             <h3 className="text-xl font-bold text-card-foreground">Nova Quota</h3>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-foreground mb-2">Categoria</label>
+              <div className="flex rounded-md border border-input overflow-hidden">
+                <button type="button" onClick={() => setFormData({ ...formData, categoria: 'IRPF' })}
+                  className={`flex-1 px-3 py-2 text-sm font-semibold transition-colors ${formData.categoria === 'IRPF' ? 'bg-primary text-primary-foreground' : 'bg-input-background text-muted-foreground hover:bg-muted'}`}>
+                  IRPF
+                </button>
+                <button type="button" onClick={() => setFormData({ ...formData, categoria: 'ITR' })}
+                  className={`flex-1 px-3 py-2 text-sm font-semibold transition-colors ${formData.categoria === 'ITR' ? 'bg-accent text-accent-foreground' : 'bg-input-background text-muted-foreground hover:bg-muted'}`}>
+                  ITR
+                </button>
+              </div>
+            </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Colaborador</label>
               <select value={formData.colaborador}
@@ -192,61 +207,118 @@ export default function QuotasPage() {
             <p className="text-muted-foreground">Nenhuma quota cadastrada</p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {quotas.map(q => {
-              const pct = Math.round((q.cotasEnviadas / q.quantidadeCotas) * 100)
-              const done = q.cotasEnviadas >= q.quantidadeCotas
-              return (
-                <div key={q.id} className={`bg-card border-2 rounded-2xl p-6 shadow-xl transition-all ${done ? 'border-success/50' : 'border-border'}`}>
-                  <div className="flex items-start justify-between mb-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <p className="font-bold text-foreground text-lg">{q.cliente}</p>
-                        {done && <Check className="w-5 h-5 text-success" />}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-0.5">{q.collaborator} • {q.meioEnvio}</p>
-                    </div>
-                    <button onClick={() => askDelete(q.id, q.cliente)}
-                      className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-
-                  <div className="mb-4">
-                    <div className="flex justify-between text-xs mb-1.5">
-                      <span className="text-muted-foreground">Progresso</span>
-                      <span className={`font-bold ${done ? 'text-success' : 'text-foreground'}`}>{pct}%</span>
-                    </div>
-                    <div className="w-full bg-muted rounded-full h-2.5">
-                      <div className={`h-2.5 rounded-full transition-all ${progressColor(q.cotasEnviadas, q.quantidadeCotas)}`}
-                        style={{ width: `${pct}%` }} />
-                    </div>
-                    <div className="flex justify-between text-xs mt-1.5 text-muted-foreground">
-                      <span>{q.cotasEnviadas} enviadas</span>
-                      <span>{q.quantidadeCotas} total</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    <button onClick={() => handleDecrement(q)} disabled={q.cotasEnviadas === 0}
-                      className="w-10 h-10 rounded-xl border-2 border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
-                    <div className="flex-1 text-center">
-                      <span className="text-2xl font-bold text-foreground">{q.cotasEnviadas}</span>
-                      <span className="text-muted-foreground text-sm"> / {q.quantidadeCotas}</span>
-                    </div>
-                    <button onClick={() => handleIncrement(q)} disabled={done}
-                      className="w-10 h-10 rounded-xl bg-primary text-primary-foreground flex items-center justify-center hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg shadow-primary/20">
-                      <ChevronUp className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )
-            })}
+          <div className="space-y-10">
+            <QuotaSection
+              titulo="Quotas IRPF"
+              corTema="primary"
+              quotas={quotas.filter(q => (q.categoria || 'IRPF') === 'IRPF')}
+              onDelete={askDelete}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
+              progressColor={progressColor}
+            />
+            <QuotaSection
+              titulo="Quotas ITR"
+              corTema="accent"
+              quotas={quotas.filter(q => q.categoria === 'ITR')}
+              onDelete={askDelete}
+              onIncrement={handleIncrement}
+              onDecrement={handleDecrement}
+              progressColor={progressColor}
+            />
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+function QuotaSection({
+  titulo, corTema, quotas, onDelete, onIncrement, onDecrement, progressColor,
+}: {
+  titulo: string
+  corTema: 'primary' | 'accent'
+  quotas: Quota[]
+  onDelete: (id: number, cliente: string) => void
+  onIncrement: (q: Quota) => void
+  onDecrement: (q: Quota) => void
+  progressColor: (enviadas: number, total: number) => string
+}) {
+  const dotClass = corTema === 'primary' ? 'bg-primary' : 'bg-accent'
+  const textClass = corTema === 'primary' ? 'text-primary' : 'text-accent'
+  const btnClass = corTema === 'primary'
+    ? 'bg-primary text-primary-foreground shadow-primary/20'
+    : 'bg-accent text-accent-foreground shadow-accent/20'
+
+  return (
+    <div>
+      <div className="flex items-center gap-3 mb-4">
+        <span className={`w-2.5 h-2.5 rounded-full ${dotClass}`} />
+        <h3 className="text-xl font-bold text-foreground">{titulo}</h3>
+        <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold bg-muted ${textClass}`}>
+          {quotas.length} {quotas.length === 1 ? 'cliente' : 'clientes'}
+        </span>
+      </div>
+
+      {quotas.length === 0 ? (
+        <div className="bg-card border-2 border-border rounded-2xl p-8 text-center shadow-xl">
+          <p className="text-muted-foreground text-sm">Nenhuma quota {titulo.split(' ')[1]} cadastrada</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {quotas.map(q => {
+            const pct = Math.round((q.cotasEnviadas / q.quantidadeCotas) * 100)
+            const done = q.cotasEnviadas >= q.quantidadeCotas
+            return (
+              <div key={q.id} className={`bg-card border-2 rounded-2xl p-6 shadow-xl transition-all ${done ? 'border-success/50' : 'border-border'}`}>
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <p className="font-bold text-foreground text-lg">{q.cliente}</p>
+                      {done && <Check className="w-5 h-5 text-success" />}
+                    </div>
+                    <p className="text-sm text-muted-foreground mt-0.5">{q.collaborator} • {q.meioEnvio}</p>
+                  </div>
+                  <button onClick={() => onDelete(q.id, q.cliente)}
+                    className="p-2 bg-destructive/10 text-destructive rounded-lg hover:bg-destructive/20 transition-colors">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-muted-foreground">Progresso</span>
+                    <span className={`font-bold ${done ? 'text-success' : 'text-foreground'}`}>{pct}%</span>
+                  </div>
+                  <div className="w-full bg-muted rounded-full h-2.5">
+                    <div className={`h-2.5 rounded-full transition-all ${progressColor(q.cotasEnviadas, q.quantidadeCotas)}`}
+                      style={{ width: `${pct}%` }} />
+                  </div>
+                  <div className="flex justify-between text-xs mt-1.5 text-muted-foreground">
+                    <span>{q.cotasEnviadas} enviadas</span>
+                    <span>{q.quantidadeCotas} total</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <button onClick={() => onDecrement(q)} disabled={q.cotasEnviadas === 0}
+                    className="w-10 h-10 rounded-xl border-2 border-border flex items-center justify-center hover:bg-muted disabled:opacity-30 disabled:cursor-not-allowed transition-colors">
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+                  <div className="flex-1 text-center">
+                    <span className="text-2xl font-bold text-foreground">{q.cotasEnviadas}</span>
+                    <span className="text-muted-foreground text-sm"> / {q.quantidadeCotas}</span>
+                  </div>
+                  <button onClick={() => onIncrement(q)} disabled={done}
+                    className={`w-10 h-10 rounded-xl flex items-center justify-center hover:opacity-90 disabled:opacity-30 disabled:cursor-not-allowed transition-all shadow-lg ${btnClass}`}>
+                    <ChevronUp className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
