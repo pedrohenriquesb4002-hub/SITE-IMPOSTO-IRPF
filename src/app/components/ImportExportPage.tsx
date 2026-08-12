@@ -101,6 +101,7 @@ export default function ImportExportPage() {
 
       // ITR sheets per month
       const itrMonths = ['Agosto', 'Setembro']
+      const itrTodas: Array<Record<string, unknown>> = []
       itrMonths.forEach((m) => {
         const decls = (data.itr?.[m] || []) as Array<Record<string, unknown>>
         if (decls.length > 0) {
@@ -109,6 +110,7 @@ export default function ImportExportPage() {
             Cliente: d.cliente,
             CPF: d.cpfCliente,
             'Valor (R$)': ((Number(d.valorRecebido) || 0) / 100).toFixed(2),
+            'Qtd. Fazendas': Number(d.quantidadeFazendas) || 1,
             Tipo: d.clienteType,
             Status: d.statusPagamento,
             'Comissão (R$)': ((Number(d.comissao) || 0) / 100).toFixed(2),
@@ -116,8 +118,34 @@ export default function ImportExportPage() {
             Categoria: 'ITR',
           }))
           XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), `ITR-${m}`)
+          itrTodas.push(...decls)
         }
       })
+
+      // ITR consolidado por cliente — total de fazendas/propriedades e valor no nome do cliente
+      if (itrTodas.length > 0) {
+        const porCliente: Record<string, { Cliente: string; CPF: string; Colaborador: string; 'Qtd. Lançamentos': number; 'Total de Fazendas': number; 'Valor Total (R$)': number }> = {}
+        for (const d of itrTodas) {
+          const chave = `${String(d.cliente || '')}|${String(d.cpfCliente || '')}`
+          if (!porCliente[chave]) {
+            porCliente[chave] = {
+              Cliente: String(d.cliente || ''),
+              CPF: String(d.cpfCliente || ''),
+              Colaborador: String(d.collaborator || ''),
+              'Qtd. Lançamentos': 0,
+              'Total de Fazendas': 0,
+              'Valor Total (R$)': 0,
+            }
+          }
+          porCliente[chave]['Qtd. Lançamentos'] += 1
+          porCliente[chave]['Total de Fazendas'] += Number(d.quantidadeFazendas) || 1
+          porCliente[chave]['Valor Total (R$)'] += (Number(d.valorRecebido) || 0) / 100
+        }
+        const consolidadoRows = Object.values(porCliente)
+          .sort((a, b) => a.Cliente.localeCompare(b.Cliente))
+          .map((c) => ({ ...c, 'Valor Total (R$)': c['Valor Total (R$)'].toFixed(2) }))
+        XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(consolidadoRows), 'ITR-Consolidado-Clientes')
+      }
 
       // Commissions summary
       if (data.commissions?.length > 0) {

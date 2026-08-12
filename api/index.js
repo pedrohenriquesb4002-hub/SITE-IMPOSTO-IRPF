@@ -590,13 +590,14 @@ export default async function handler(req, res) {
         const [own] = await sql`SELECT id FROM "itrDeclarations" WHERE id = ${id} AND "userId" = ${sharedUserId} LIMIT 1`
         if (!own) return res.status(404).json({ error: 'Não encontrado' })
         if (req.method === 'PUT') {
-          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body || {}
+          const { collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth, quantidadeFazendas } = req.body || {}
           const [cur] = await sql`SELECT * FROM "itrDeclarations" WHERE id = ${id} LIMIT 1`
           const s = await getSettings()
           const nv = valorRecebido ?? cur.valorRecebido
           const nt = clienteType ?? cur.clienteType
           const ns = statusPagamento ?? cur.statusPagamento
           const npm = paymentMonth ?? cur.paymentMonth
+          const nqf = quantidadeFazendas && quantidadeFazendas > 0 ? quantidadeFazendas : cur.quantidadeFazendas
           const pct = s.percentualDiversosITR ?? s.percentualDiversos
           const fixo = s.valorFixoSocioITR ?? s.valorFixoSocio
           const comissao = ns === 'PAGO' ? calcComissao(nv, nt, ns, pct, fixo) : 0
@@ -609,6 +610,7 @@ export default async function handler(req, res) {
             "statusPagamento" = ${ns},
             comissao = ${comissao},
             "paymentMonth" = ${ns === 'PAGO' ? (npm || cur.month) : null},
+            "quantidadeFazendas" = ${nqf},
             "updatedAt" = NOW()
             WHERE id = ${id} RETURNING *`
           return res.status(200).json(u)
@@ -624,15 +626,16 @@ export default async function handler(req, res) {
         return res.status(200).json(rows)
       }
       if (req.method === 'POST') {
-        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth } = req.body || {}
+        const { month, collaborator, cpfCliente, cliente, valorRecebido, clienteType, statusPagamento, paymentMonth, quantidadeFazendas } = req.body || {}
         const s = await getSettings()
         const pct = s.percentualDiversosITR ?? s.percentualDiversos
         const fixo = s.valorFixoSocioITR ?? s.valorFixoSocio
         const comissao = statusPagamento === 'PAGO' ? calcComissao(valorRecebido, clienteType, statusPagamento, pct, fixo) : 0
         const pm = statusPagamento === 'PAGO' ? (paymentMonth || month) : null
         const pm2 = req.body?.paymentDate || null
-        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth", "paymentDate")
-          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}, ${pm2}) RETURNING *`
+        const qf = quantidadeFazendas && quantidadeFazendas > 0 ? quantidadeFazendas : 1
+        const [row] = await sql`INSERT INTO "itrDeclarations" ("userId", month, collaborator, "cpfCliente", cliente, "valorRecebido", "clienteType", comissao, "statusPagamento", "paymentMonth", "paymentDate", "quantidadeFazendas")
+          VALUES (${sharedUserId}, ${month}, ${collaborator}, ${cpfCliente || null}, ${cliente}, ${valorRecebido}, ${clienteType}, ${comissao}, ${statusPagamento}, ${pm}, ${pm2}, ${qf}) RETURNING *`
         return res.status(201).json(row)
       }
     }
@@ -729,13 +732,14 @@ export default async function handler(req, res) {
         const [own] = await sql`SELECT id FROM quotas WHERE id = ${id} AND "userId" = ${sharedUserId} LIMIT 1`
         if (!own) return res.status(404).json({ error: 'Não encontrado' })
         if (req.method === 'PUT') {
-          const { cotasEnviadas, collaborator, cliente, quantidadeCotas, meioEnvio } = req.body || {}
+          const { cotasEnviadas, collaborator, cliente, quantidadeCotas, meioEnvio, categoria } = req.body || {}
           const [u] = await sql`UPDATE quotas SET
             "cotasEnviadas" = COALESCE(${cotasEnviadas ?? null}, "cotasEnviadas"),
             collaborator = COALESCE(${collaborator || null}, collaborator),
             cliente = COALESCE(${cliente || null}, cliente),
             "quantidadeCotas" = COALESCE(${quantidadeCotas ?? null}, "quantidadeCotas"),
             "meioEnvio" = COALESCE(${meioEnvio || null}, "meioEnvio"),
+            categoria = COALESCE(${categoria || null}, categoria),
             "updatedAt" = NOW()
             WHERE id = ${id} RETURNING *`
           return res.status(200).json(u)
@@ -750,9 +754,9 @@ export default async function handler(req, res) {
         return res.status(200).json(rows)
       }
       if (req.method === 'POST') {
-        const { collaborator, cliente, quantidadeCotas, cotasEnviadas, meioEnvio } = req.body || {}
-        const [row] = await sql`INSERT INTO quotas ("userId", collaborator, cliente, "quantidadeCotas", "cotasEnviadas", "meioEnvio")
-          VALUES (${sharedUserId}, ${collaborator}, ${cliente}, ${quantidadeCotas}, ${cotasEnviadas || 0}, ${meioEnvio}) RETURNING *`
+        const { collaborator, cliente, quantidadeCotas, cotasEnviadas, meioEnvio, categoria } = req.body || {}
+        const [row] = await sql`INSERT INTO quotas ("userId", collaborator, cliente, "quantidadeCotas", "cotasEnviadas", "meioEnvio", categoria)
+          VALUES (${sharedUserId}, ${collaborator}, ${cliente}, ${quantidadeCotas}, ${cotasEnviadas || 0}, ${meioEnvio}, ${categoria === 'ITR' ? 'ITR' : 'IRPF'}) RETURNING *`
         return res.status(201).json(row)
       }
     }

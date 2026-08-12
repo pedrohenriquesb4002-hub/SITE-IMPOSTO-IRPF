@@ -72,6 +72,7 @@ CREATE TABLE IF NOT EXISTS "itrDeclarations" (
   "clienteType" "clienteType" NOT NULL,
   comissao INTEGER,
   "statusPagamento" "statusPagamento" NOT NULL,
+  "quantidadeFazendas" INTEGER NOT NULL DEFAULT 1,
   "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
   "updatedAt" TIMESTAMP DEFAULT NOW() NOT NULL
 );
@@ -107,6 +108,7 @@ CREATE TABLE IF NOT EXISTS quotas (
   "quantidadeCotas" INTEGER NOT NULL,
   "cotasEnviadas" INTEGER NOT NULL DEFAULT 0,
   "meioEnvio" "meioEnvio" NOT NULL,
+  categoria VARCHAR(10) NOT NULL DEFAULT 'IRPF',
   "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL,
   "updatedAt" TIMESTAMP DEFAULT NOW() NOT NULL
 );
@@ -121,6 +123,20 @@ CREATE TABLE IF NOT EXISTS "quotaTracking" (
   "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_quota_tracking_quota_id ON "quotaTracking"("quotaId");
+
+-- ============================================================
+-- MIGRAÇÃO (rodar em bancos já existentes — é seguro, só adiciona
+-- colunas novas com valor padrão; nenhum lançamento já cadastrado
+-- é alterado ou apagado)
+-- ============================================================
+
+-- Diferenciação IRPF/ITR nas Quotas (lançamentos antigos passam a
+-- ficar marcados como 'IRPF' por padrão e continuam intactos)
+ALTER TABLE quotas ADD COLUMN IF NOT EXISTS categoria VARCHAR(10) NOT NULL DEFAULT 'IRPF';
+
+-- Quantidade de fazendas/propriedades por lançamento de ITR
+-- (lançamentos antigos passam a valer 1 propriedade por padrão)
+ALTER TABLE "itrDeclarations" ADD COLUMN IF NOT EXISTS "quantidadeFazendas" INTEGER NOT NULL DEFAULT 1;
 
 -- Sessions (para autenticação JWT não precisamos, mas guardamos refresh info)
 -- Insira o primeiro usuário admin depois de rodar o sistema:
