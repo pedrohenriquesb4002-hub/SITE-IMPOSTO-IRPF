@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react'
 import { Plus, Trash2, Search, Edit, ChevronLeft, ChevronRight, Save, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { api, type Declaration, type Collaborator } from '../../lib/store'
-import { formatCPF } from '../../lib/utils'
+import { formatCPFOuCNPJ } from '../../lib/utils'
 import ConfirmModal from './ConfirmModal'
 import DatePicker from './DatePicker'
 
@@ -239,11 +239,11 @@ export default function ITRPage({ month }: { month: string }) {
                 placeholder="Nome do cliente" />
             </div>
             <div>
-              <label className="block text-xs font-medium text-foreground mb-2">CPF</label>
+              <label className="block text-xs font-medium text-foreground mb-2">CPF/CNPJ</label>
               <input type="text" value={formData.cpf}
-                onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })}
+                onChange={(e) => setFormData({ ...formData, cpf: formatCPFOuCNPJ(e.target.value) })}
                 className="w-full px-3 py-2 text-sm bg-input-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-ring text-foreground"
-                placeholder="000.000.000-00" maxLength={14} />
+                placeholder="000.000.000-00 ou 00.000.000/0000-00" maxLength={18} />
             </div>
             <div>
               <label className="block text-xs font-medium text-foreground mb-2">Valor (R$)</label>
@@ -327,7 +327,7 @@ export default function ITRPage({ month }: { month: string }) {
                 <table className="w-full text-sm">
                   <thead className="bg-muted border-b border-border sticky top-0 z-10">
                     <tr>
-                      {['Colaborador', 'Cliente', 'CPF', 'Valor', 'Fazendas', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map(h => (
+                      {['Colaborador', 'Cliente', 'CPF/CNPJ', 'Valor', 'Fazendas', 'Tipo', 'Status', 'Mês Pgto', 'Comissão', 'Ações'].map(h => (
                         <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-muted-foreground uppercase tracking-wider whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -353,8 +353,8 @@ export default function ITRPage({ month }: { month: string }) {
                             </td>
                             <td className="px-4 py-2">
                               <input value={editFormData.cpfCliente || ''}
-                                onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPF(e.target.value) })}
-                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" maxLength={14} />
+                                onChange={(e) => setEditFormData({ ...editFormData, cpfCliente: formatCPFOuCNPJ(e.target.value) })}
+                                className="w-full px-2 py-1 text-xs bg-input-background border border-input rounded text-foreground" maxLength={18} />
                             </td>
                             <td className="px-4 py-2">
                               <input type="number" value={editFormData.valorRecebido / 100}

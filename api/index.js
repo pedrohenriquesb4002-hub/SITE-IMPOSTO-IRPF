@@ -151,9 +151,13 @@ export default async function handler(req, res) {
   const ip = getIP(req)
 
   // Sanitização básica de input
+  // (campo "photo" fica de fora do limite de 2000 — é uma imagem em base64,
+  // sempre bem maior que isso; truncar corrompia a imagem salva)
   if (req.body && typeof req.body === 'object') {
     for (const [k, v] of Object.entries(req.body)) {
-      if (typeof v === 'string') req.body[k] = v.slice(0, 2000) // limite tamanho
+      if (typeof v === 'string') {
+        req.body[k] = k === 'photo' ? v.slice(0, 8_000_000) : v.slice(0, 2000)
+      }
     }
   }
 
