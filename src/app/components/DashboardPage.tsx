@@ -5,6 +5,8 @@ import { api, type DashboardData } from '../../lib/store'
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [rankCategoria, setRankCategoria] = useState<'ambos' | 'irpf' | 'itr'>('ambos')
+  const [rankMetric, setRankMetric] = useState<'comissao' | 'declaracoes'>('comissao')
 
   useEffect(() => {
     api.dashboard().then(setData).catch(() => {}).finally(() => setLoading(false))
@@ -41,6 +43,16 @@ export default function DashboardPage() {
     ...itrMonths.map(m => data.itr.byMonth[m]?.recebido || 0),
     1
   )
+
+  const rankedColaboradores = data.topCollaboradores
+    .map(c => ({
+      name: c.name,
+      total: rankCategoria === 'irpf' ? c.irpf.total : rankCategoria === 'itr' ? c.itr.total : c.irpf.total + c.itr.total,
+      comissao: rankCategoria === 'irpf' ? c.irpf.comissao : rankCategoria === 'itr' ? c.itr.comissao : c.irpf.comissao + c.itr.comissao,
+    }))
+    .filter(c => c.total > 0)
+    .sort((a, b) => rankMetric === 'comissao' ? b.comissao - a.comissao : b.total - a.total)
+    .slice(0, 5)
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
@@ -140,15 +152,47 @@ export default function DashboardPage() {
 
           {/* Top colaboradores */}
           <div className="bg-card border-2 border-border rounded-2xl p-6 shadow-xl">
-            <h3 className="font-bold text-foreground mb-6 flex items-center gap-2">
+            <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
               <Award className="w-5 h-5 text-accent" /> Top Colaboradores
             </h3>
-            {data.topCollaboradores.length === 0 ? (
+
+            {/* Filtros */}
+            <div className="space-y-2 mb-5">
+              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
+                {([
+                  { key: 'ambos', label: 'Ambos' },
+                  { key: 'irpf', label: 'IRPF' },
+                  { key: 'itr', label: 'ITR' },
+                ] as const).map(opt => (
+                  <button key={opt.key} onClick={() => setRankCategoria(opt.key)}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      rankCategoria === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
+                {([
+                  { key: 'comissao', label: 'Comissão' },
+                  { key: 'declaracoes', label: 'Declarações' },
+                ] as const).map(opt => (
+                  <button key={opt.key} onClick={() => setRankMetric(opt.key)}
+                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+                      rankMetric === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                    }`}>
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {rankedColaboradores.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-8">Sem dados ainda</p>
             ) : (
               <div className="space-y-3">
-                {data.topCollaboradores.map((col, i) => (
-                  <div key={i} className="flex items-center gap-3">
+                {rankedColaboradores.map((col, i) => (
+                  <div key={col.name} className="flex items-center gap-3">
                     <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0 ${
                       i === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
                       i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
@@ -159,10 +203,14 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-semibold text-foreground truncate">{col.name}</p>
-                      <p className="text-xs text-muted-foreground">{col.vendas} {col.vendas === 1 ? 'declaração' : 'declarações'}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {rankMetric === 'comissao'
+                          ? `${col.total} ${col.total === 1 ? 'declaração' : 'declarações'}`
+                          : `R$ ${(col.comissao / 100).toFixed(2)} em comissão`}
+                      </p>
                     </div>
                     <span className="text-sm font-bold text-success whitespace-nowrap">
-                      R$ {(col.comissao / 100).toFixed(2)}
+                      {rankMetric === 'comissao' ? `R$ ${(col.comissao / 100).toFixed(2)}` : col.total}
                     </span>
                   </div>
                 ))}

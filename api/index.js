@@ -787,11 +787,25 @@ export default async function handler(req, res) {
         const md = itrAll.filter(d => d.month === m)
         itrByMonth[m] = { total: md.length, recebido: md.reduce((s, d) => s + (d.valorRecebido || 0), 0), comissao: md.filter(d => d.statusPagamento === 'PAGO').reduce((s, d) => s + (d.comissao || 0), 0) }
       }
+      // Ranking por colaborador — separado por IRPF/ITR pra dar pra filtrar no dashboard
       const collabMap = {}
-      for (const d of [...irpfPago, ...itrPago]) {
-        if (!collabMap[d.collaborator]) collabMap[d.collaborator] = { name: d.collaborator, comissao: 0, vendas: 0 }
-        collabMap[d.collaborator].comissao += d.comissao || 0
-        collabMap[d.collaborator].vendas++
+      const ensureCollab = (name) => {
+        if (!collabMap[name]) collabMap[name] = {
+          name,
+          irpf: { total: 0, comissao: 0 },
+          itr: { total: 0, comissao: 0 },
+        }
+        return collabMap[name]
+      }
+      for (const d of irpfAll) {
+        const c = ensureCollab(d.collaborator)
+        c.irpf.total++
+        if (d.statusPagamento === 'PAGO') c.irpf.comissao += d.comissao || 0
+      }
+      for (const d of itrAll) {
+        const c = ensureCollab(d.collaborator)
+        c.itr.total++
+        if (d.statusPagamento === 'PAGO') c.itr.comissao += d.comissao || 0
       }
       return res.status(200).json({
         totalColaboradores: collabs.length,
@@ -811,7 +825,9 @@ export default async function handler(req, res) {
           comissaoTotal: itrPago.reduce((s, d) => s + (d.comissao || 0), 0),
           byMonth: itrByMonth,
         },
-        topCollaboradores: Object.values(collabMap).sort((a, b) => b.comissao - a.comissao).slice(0, 5),
+        topCollaboradores: Object.values(collabMap).sort((a, b) =>
+          (b.irpf.comissao + b.itr.comissao) - (a.irpf.comissao + a.itr.comissao)
+        ),
         settings,
       })
     }

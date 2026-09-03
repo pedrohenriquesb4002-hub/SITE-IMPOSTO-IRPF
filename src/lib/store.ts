@@ -214,6 +214,10 @@ export interface DashboardData {
     recebidoTotal: number; recebidoPago: number; comissaoTotal: number
     byMonth: Record<string, { total: number; recebido: number; comissao: number }>
   }
-  topCollaboradores: { name: string; comissao: number; vendas: number }[]
+  topCollaboradores: {
+    name: string
+    irpf: { total: number; comissao: number }
+    itr: { total: number; comissao: number }
+  }[]
   settings: Settings
 }
