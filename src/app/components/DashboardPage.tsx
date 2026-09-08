@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, DollarSign, Users, FileText, Clock, CheckCircle, BarChart2, Award, Crown } from 'lucide-react'
+import { TrendingUp, DollarSign, Users, FileText, Clock, CheckCircle, BarChart2, Award, Crown, ArrowRight } from 'lucide-react'
 import { api, type DashboardData, type Collaborator } from '../../lib/store'
 
-export default function DashboardPage() {
+interface DashboardPageProps {
+  onNavigate?: (page: 'irpf' | 'itr', month: string, cliente: string) => void
+}
+
+export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [loading, setLoading] = useState(true)
@@ -154,6 +158,38 @@ export default function DashboardPage() {
                 <span>{totalAguardando} aguardando</span>
               </div>
             </div>
+
+            {/* Clientes em aberto */}
+            {data.pendentes.length > 0 && (
+              <div className="mt-6">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                  Em aberto para pagamento ({data.pendentes.length})
+                </p>
+                <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5 border border-border rounded-xl p-2 bg-muted/10">
+                  {data.pendentes.map((pnd) => (
+                    <button
+                      key={`${pnd.categoria}-${pnd.id}`}
+                      onClick={() => onNavigate?.(pnd.categoria === 'ITR' ? 'itr' : 'irpf', pnd.month, pnd.cliente)}
+                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors text-left group"
+                    >
+                      <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                        pnd.categoria === 'ITR' ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
+                      }`}>
+                        {pnd.categoria}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-foreground truncate">{pnd.cliente}</p>
+                        <p className="text-xs text-muted-foreground truncate">{pnd.collaborator} · {pnd.month}</p>
+                      </div>
+                      <span className="text-sm font-semibold text-warning whitespace-nowrap flex-shrink-0">
+                        R$ {(pnd.valorRecebido / 100).toFixed(2)}
+                      </span>
+                      <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Top colaboradores */}

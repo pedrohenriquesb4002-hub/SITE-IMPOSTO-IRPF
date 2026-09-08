@@ -219,5 +219,13 @@ export interface DashboardData {
     irpf: { total: number; comissao: number }
     itr: { total: number; comissao: number }
   }[]
+  pendentes: {
+    id: number
+    categoria: 'IRPF' | 'ITR'
+    cliente: string
+    collaborator: string
+    valorRecebido: number
+    month: string
+  }[]
   settings: Settings
 }

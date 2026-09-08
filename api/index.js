@@ -828,6 +828,16 @@ export default async function handler(req, res) {
         topCollaboradores: Object.values(collabMap).sort((a, b) =>
           (b.irpf.comissao + b.itr.comissao) - (a.irpf.comissao + a.itr.comissao)
         ),
+        pendentes: [
+          ...irpfAll.filter(d => d.statusPagamento === 'AGUARDANDO').map(d => ({
+            id: d.id, categoria: 'IRPF', cliente: d.cliente, collaborator: d.collaborator,
+            valorRecebido: d.valorRecebido || 0, month: d.month,
+          })),
+          ...itrAll.filter(d => d.statusPagamento === 'AGUARDANDO').map(d => ({
+            id: d.id, categoria: 'ITR', cliente: d.cliente, collaborator: d.collaborator,
+            valorRecebido: d.valorRecebido || 0, month: d.month,
+          })),
+        ].sort((a, b) => b.valorRecebido - a.valorRecebido),
         settings,
       })
     }

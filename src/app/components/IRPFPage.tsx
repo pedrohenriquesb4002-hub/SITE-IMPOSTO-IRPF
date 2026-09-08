@@ -8,7 +8,7 @@ import DatePicker from './DatePicker'
 
 const IRPF_MONTHS = ['Março', 'Abril', 'Maio']
 
-export default function IRPFPage({ month }: { month: string }) {
+export default function IRPFPage({ month, initialClienteFilter }: { month: string; initialClienteFilter?: string }) {
   const [declaracoes, setDeclaracoes] = useState<Declaration[]>([])
   const [loading, setLoading] = useState(true)
   const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
@@ -19,7 +19,7 @@ export default function IRPFPage({ month }: { month: string }) {
     paymentDate: '',  // DD/MM/AAAA
   })
   const [filterColaborador, setFilterColaborador] = useState('')
-  const [filterCliente, setFilterCliente] = useState('')
+  const [filterCliente, setFilterCliente] = useState(initialClienteFilter || '')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editFormData, setEditFormData] = useState<Declaration | null>(null)
   const [currentPage, setCurrentPage] = useState(1)

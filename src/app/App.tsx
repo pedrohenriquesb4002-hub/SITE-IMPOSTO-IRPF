@@ -29,6 +29,14 @@ function Dashboard() {
   const [currentPage, setCurrentPage] = useState('dashboard')
   const [irpfMonth, setIrpfMonth] = useState('Março')
   const [itrMonth, setItrMonth] = useState('Agosto')
+  const [pendingClienteFilter, setPendingClienteFilter] = useState('')
+
+  const handleNavigateToLancamento = (page: 'irpf' | 'itr', month: string, cliente: string) => {
+    if (page === 'irpf') setIrpfMonth(month)
+    else setItrMonth(month)
+    setPendingClienteFilter(cliente)
+    setCurrentPage(page)
+  }
 
   // Modal de confirmação de saída
   const [showLogoutModal, setShowLogoutModal] = useState(false)
@@ -74,9 +82,9 @@ function Dashboard() {
 
   const renderContent = () => {
     switch (currentPage) {
-      case 'dashboard': return <DashboardPage />
-      case 'irpf': return <IRPFPage month={irpfMonth} />
-      case 'itr': return <ITRPage month={itrMonth} />
+      case 'dashboard': return <DashboardPage onNavigate={handleNavigateToLancamento} />
+      case 'irpf': return <IRPFPage month={irpfMonth} initialClienteFilter={pendingClienteFilter} />
+      case 'itr': return <ITRPage month={itrMonth} initialClienteFilter={pendingClienteFilter} />
       case 'comissoes': return <ComissoesPage />
       case 'precificacoes': return <PrecificacoesPage />
       case 'quotas': return <QuotasPage />
@@ -132,7 +140,7 @@ function Dashboard() {
           {menuItems.map((item) => (
             <div key={item.id}>
               <button
-                onClick={() => setCurrentPage(item.id)}
+                onClick={() => { setCurrentPage(item.id); setPendingClienteFilter('') }}
                 className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all ${
                   currentPage === item.id
                     ? 'bg-sidebar-primary text-sidebar-primary-foreground shadow-lg shadow-sidebar-primary/30'

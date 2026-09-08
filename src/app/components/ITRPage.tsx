@@ -8,7 +8,7 @@ import DatePicker from './DatePicker'
 
 const ITR_MONTHS = ['Agosto', 'Setembro']
 
-export default function ITRPage({ month }: { month: string }) {
+export default function ITRPage({ month, initialClienteFilter }: { month: string; initialClienteFilter?: string }) {
   const [declaracoes, setDeclaracoes] = useState<Declaration[]>([])
   const [loading, setLoading] = useState(true)
   const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
@@ -20,7 +20,7 @@ export default function ITRPage({ month }: { month: string }) {
     quantidadeFazendas: '1',  // qtd. de fazendas/propriedades no nome do cliente
   })
   const [filterColaborador, setFilterColaborador] = useState('')
-  const [filterCliente, setFilterCliente] = useState('')
+  const [filterCliente, setFilterCliente] = useState(initialClienteFilter || '')
   const [editingId, setEditingId] = useState<number | null>(null)
   const [editFormData, setEditFormData] = useState<Declaration | null>(null)
   const [currentPage, setCurrentPage] = useState(1)
