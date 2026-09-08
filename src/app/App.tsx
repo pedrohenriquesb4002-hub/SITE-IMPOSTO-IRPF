@@ -121,9 +121,9 @@ function Dashboard() {
       <div className={`${sidebarCollapsed ? 'w-20' : 'w-72'} bg-sidebar transition-all duration-300 flex flex-col shadow-2xl flex-shrink-0`}>
         <div className="px-6 py-6 border-b border-sidebar-border/50 flex items-center justify-between">
           {!sidebarCollapsed && (
-            <div>
-              <h1 className="text-lg font-bold text-sidebar-foreground tracking-tight">IRPF/ITR</h1>
-              <p className="text-xs text-sidebar-foreground/70 mt-1">Sistema de Gestão</p>
+            <div className="flex items-center gap-3 min-w-0">
+              <img src="/logo.png" alt="Logo" className="h-9 w-auto flex-shrink-0" />
+              <p className="text-xs text-sidebar-foreground/70 truncate">Sistema de Gestão</p>
             </div>
           )}
           <button
