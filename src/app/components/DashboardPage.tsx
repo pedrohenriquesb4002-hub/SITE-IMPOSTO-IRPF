@@ -11,6 +11,8 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [loading, setLoading] = useState(true)
   const [rankCategoria, setRankCategoria] = useState<'ambos' | 'irpf' | 'itr'>('ambos')
+  const [pendCategoria, setPendCategoria] = useState<'todos' | 'IRPF' | 'ITR'>('todos')
+  const [pendColaborador, setPendColaborador] = useState('')
 
   useEffect(() => {
     Promise.all([api.dashboard(), api.collaborators.list()])
@@ -52,6 +54,13 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
   )
 
   const getColabPhoto = (name: string) => colaboradores.find(c => c.name === name)?.photo || null
+
+  const colaboradoresComPendencia = Array.from(new Set(data.pendentes.map(p => p.collaborator))).sort((a, b) => a.localeCompare(b))
+  const pendentesFiltrados = data.pendentes.filter(p =>
+    (pendCategoria === 'todos' || p.categoria === pendCategoria) &&
+    (!pendColaborador || p.collaborator === pendColaborador)
+  )
+  const pendFiltroAtivo = pendCategoria !== 'todos' || pendColaborador !== ''
 
   const rankedColaboradores = data.topCollaboradores
     .map(c => ({
@@ -162,32 +171,72 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             {/* Clientes em aberto */}
             {data.pendentes.length > 0 && (
               <div className="mt-6">
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
-                  Em aberto para pagamento ({data.pendentes.length})
-                </p>
-                <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5 border border-border rounded-xl p-2 bg-muted/10">
-                  {data.pendentes.map((pnd) => (
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Em aberto para pagamento ({pendentesFiltrados.length}{pendFiltroAtivo ? ` de ${data.pendentes.length}` : ''})
+                  </p>
+                  {pendFiltroAtivo && (
                     <button
-                      key={`${pnd.categoria}-${pnd.id}`}
-                      onClick={() => onNavigate?.(pnd.categoria === 'ITR' ? 'itr' : 'irpf', pnd.month, pnd.cliente)}
-                      className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors text-left group"
+                      onClick={() => { setPendCategoria('todos'); setPendColaborador('') }}
+                      className="text-[11px] font-medium text-primary hover:underline"
                     >
-                      <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
-                        pnd.categoria === 'ITR' ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
-                      }`}>
-                        {pnd.categoria}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-foreground truncate">{pnd.cliente}</p>
-                        <p className="text-xs text-muted-foreground truncate">{pnd.collaborator} · {pnd.month}</p>
-                      </div>
-                      <span className="text-sm font-semibold text-warning whitespace-nowrap flex-shrink-0">
-                        R$ {(pnd.valorRecebido / 100).toFixed(2)}
-                      </span>
-                      <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                      Limpar filtros
                     </button>
-                  ))}
+                  )}
                 </div>
+
+                {/* Filtros */}
+                <div className="flex flex-col sm:flex-row gap-2 mb-3">
+                  <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1 sm:w-auto">
+                    {([
+                      { key: 'todos', label: 'Todos' },
+                      { key: 'IRPF', label: 'IRPF' },
+                      { key: 'ITR', label: 'ITR' },
+                    ] as const).map(opt => (
+                      <button key={opt.key} onClick={() => setPendCategoria(opt.key)}
+                        className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                          pendCategoria === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                        }`}>
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                  <select value={pendColaborador} onChange={(e) => setPendColaborador(e.target.value)}
+                    className="flex-1 px-3 py-1.5 text-xs bg-input-background border border-input rounded-lg focus:outline-none focus:ring-2 focus:ring-ring text-foreground">
+                    <option value="">Todos os colaboradores</option>
+                    {colaboradoresComPendencia.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                </div>
+
+                {pendentesFiltrados.length === 0 ? (
+                  <div className="border border-dashed border-border rounded-xl p-6 text-center">
+                    <p className="text-sm text-muted-foreground">Nenhum lançamento em aberto com esse filtro</p>
+                  </div>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto pr-1 space-y-1.5 border border-border rounded-xl p-2 bg-muted/10">
+                    {pendentesFiltrados.map((pnd) => (
+                      <button
+                        key={`${pnd.categoria}-${pnd.id}`}
+                        onClick={() => onNavigate?.(pnd.categoria === 'ITR' ? 'itr' : 'irpf', pnd.month, pnd.cliente)}
+                        className="w-full flex items-center gap-3 p-2.5 rounded-lg hover:bg-muted/40 transition-colors text-left group"
+                      >
+                        <span className={`flex-shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          pnd.categoria === 'ITR' ? 'bg-accent/10 text-accent' : 'bg-primary/10 text-primary'
+                        }`}>
+                          {pnd.categoria}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">{pnd.cliente}</p>
+                          <p className="text-xs text-muted-foreground truncate">{pnd.collaborator} · {pnd.month}</p>
+                        </div>
+                        <span className="text-sm font-semibold text-warning whitespace-nowrap flex-shrink-0">
+                          R$ {(pnd.valorRecebido / 100).toFixed(2)}
+                        </span>
+                        <ArrowRight className="w-4 h-4 text-muted-foreground/40 group-hover:text-foreground group-hover:translate-x-0.5 transition-all flex-shrink-0" />
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
