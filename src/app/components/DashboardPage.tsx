@@ -1,15 +1,18 @@
 import { useState, useEffect } from 'react'
-import { TrendingUp, DollarSign, Users, FileText, Clock, CheckCircle, BarChart2, Award } from 'lucide-react'
-import { api, type DashboardData } from '../../lib/store'
+import { TrendingUp, DollarSign, Users, FileText, Clock, CheckCircle, BarChart2, Award, Crown } from 'lucide-react'
+import { api, type DashboardData, type Collaborator } from '../../lib/store'
 
 export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null)
+  const [colaboradores, setColaboradores] = useState<Collaborator[]>([])
   const [loading, setLoading] = useState(true)
   const [rankCategoria, setRankCategoria] = useState<'ambos' | 'irpf' | 'itr'>('ambos')
-  const [rankMetric, setRankMetric] = useState<'comissao' | 'declaracoes'>('comissao')
 
   useEffect(() => {
-    api.dashboard().then(setData).catch(() => {}).finally(() => setLoading(false))
+    Promise.all([api.dashboard(), api.collaborators.list()])
+      .then(([d, c]) => { setData(d); setColaboradores(c) })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }, [])
 
   if (loading) return (
@@ -44,6 +47,8 @@ export default function DashboardPage() {
     1
   )
 
+  const getColabPhoto = (name: string) => colaboradores.find(c => c.name === name)?.photo || null
+
   const rankedColaboradores = data.topCollaboradores
     .map(c => ({
       name: c.name,
@@ -51,8 +56,9 @@ export default function DashboardPage() {
       comissao: rankCategoria === 'irpf' ? c.irpf.comissao : rankCategoria === 'itr' ? c.itr.comissao : c.irpf.comissao + c.itr.comissao,
     }))
     .filter(c => c.total > 0)
-    .sort((a, b) => rankMetric === 'comissao' ? b.comissao - a.comissao : b.total - a.total)
+    .sort((a, b) => b.total - a.total)
     .slice(0, 5)
+  const maxRankTotal = Math.max(...rankedColaboradores.map(c => c.total), 1)
 
   return (
     <div className="p-8 bg-gradient-to-br from-background via-muted/20 to-background min-h-screen">
@@ -152,68 +158,82 @@ export default function DashboardPage() {
 
           {/* Top colaboradores */}
           <div className="bg-card border-2 border-border rounded-2xl p-6 shadow-xl">
-            <h3 className="font-bold text-foreground mb-4 flex items-center gap-2">
-              <Award className="w-5 h-5 text-accent" /> Top Colaboradores
-            </h3>
+            <div className="flex items-center justify-between mb-5">
+              <h3 className="font-bold text-foreground flex items-center gap-2">
+                <Award className="w-5 h-5 text-accent" /> Top Colaboradores
+              </h3>
+              <span className="text-[10px] text-muted-foreground uppercase tracking-wide">por declarações</span>
+            </div>
 
-            {/* Filtros */}
-            <div className="space-y-2 mb-5">
-              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
-                {([
-                  { key: 'ambos', label: 'Ambos' },
-                  { key: 'irpf', label: 'IRPF' },
-                  { key: 'itr', label: 'ITR' },
-                ] as const).map(opt => (
-                  <button key={opt.key} onClick={() => setRankCategoria(opt.key)}
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      rankCategoria === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
-              <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1">
-                {([
-                  { key: 'comissao', label: 'Comissão' },
-                  { key: 'declaracoes', label: 'Declarações' },
-                ] as const).map(opt => (
-                  <button key={opt.key} onClick={() => setRankMetric(opt.key)}
-                    className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-colors ${
-                      rankMetric === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
-                    }`}>
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+            {/* Filtro de categoria */}
+            <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-1 mb-5">
+              {([
+                { key: 'ambos', label: 'Ambos' },
+                { key: 'irpf', label: 'IRPF' },
+                { key: 'itr', label: 'ITR' },
+              ] as const).map(opt => (
+                <button key={opt.key} onClick={() => setRankCategoria(opt.key)}
+                  className={`flex-1 px-2 py-1.5 text-xs font-semibold rounded-md transition-all ${
+                    rankCategoria === opt.key ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
             {rankedColaboradores.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-8">Sem dados ainda</p>
             ) : (
-              <div className="space-y-3">
-                {rankedColaboradores.map((col, i) => (
-                  <div key={col.name} className="flex items-center gap-3">
-                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-black text-white flex-shrink-0 ${
-                      i === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
-                      i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
-                      i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600' :
-                      'bg-gradient-to-br from-primary/40 to-primary/60'
-                    }`}>
-                      {i + 1}
+              <div className="space-y-2.5">
+                {rankedColaboradores.map((col, i) => {
+                  const photo = getColabPhoto(col.name)
+                  return (
+                    <div key={col.name}
+                      className={`relative overflow-hidden rounded-xl p-3 transition-all ${
+                        i === 0
+                          ? 'bg-gradient-to-r from-yellow-400/10 via-yellow-400/5 to-transparent border border-yellow-400/30'
+                          : 'bg-muted/20 border border-transparent hover:border-border'
+                      }`}>
+                      <div className="flex items-center gap-3">
+                        <div className="relative flex-shrink-0">
+                          <div className={`w-10 h-10 rounded-full overflow-hidden flex items-center justify-center ring-2 ${
+                            i === 0 ? 'ring-yellow-400/60' : i === 1 ? 'ring-gray-300/60' : i === 2 ? 'ring-orange-400/60' : 'ring-border'
+                          } bg-gradient-to-br from-primary/30 to-primary/10`}>
+                            {photo
+                              ? <img src={photo} alt={col.name} className="w-full h-full object-cover" />
+                              : <span className="text-sm font-bold text-primary">{col.name.charAt(0).toUpperCase()}</span>}
+                          </div>
+                          <div className={`absolute -bottom-1 -right-1 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black text-white ring-2 ring-card ${
+                            i === 0 ? 'bg-gradient-to-br from-yellow-400 to-yellow-600' :
+                            i === 1 ? 'bg-gradient-to-br from-gray-300 to-gray-500' :
+                            i === 2 ? 'bg-gradient-to-br from-orange-400 to-orange-600' :
+                            'bg-gradient-to-br from-primary/50 to-primary/70'
+                          }`}>
+                            {i === 0 ? <Crown className="w-3 h-3" /> : i + 1}
+                          </div>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold text-foreground truncate">{col.name}</p>
+                          <p className="text-xs text-muted-foreground">R$ {(col.comissao / 100).toFixed(2)} em comissão</p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="text-lg font-black text-foreground leading-none">{col.total}</p>
+                          <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5">
+                            {col.total === 1 ? 'declaração' : 'declarações'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-2.5 h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-700 ${
+                            i === 0 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-primary to-primary/60'
+                          }`}
+                          style={{ width: `${Math.max((col.total / maxRankTotal) * 100, 6)}%` }}
+                        />
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold text-foreground truncate">{col.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {rankMetric === 'comissao'
-                          ? `${col.total} ${col.total === 1 ? 'declaração' : 'declarações'}`
-                          : `R$ ${(col.comissao / 100).toFixed(2)} em comissão`}
-                      </p>
-                    </div>
-                    <span className="text-sm font-bold text-success whitespace-nowrap">
-                      {rankMetric === 'comissao' ? `R$ ${(col.comissao / 100).toFixed(2)}` : col.total}
-                    </span>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             )}
           </div>

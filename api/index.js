@@ -804,7 +804,7 @@ export default async function handler(req, res) {
       }
       for (const d of itrAll) {
         const c = ensureCollab(d.collaborator)
-        c.itr.total++
+        c.itr.total += d.quantidadeFazendas || 1 // ITR conta por fazenda/propriedade, não por lançamento
         if (d.statusPagamento === 'PAGO') c.itr.comissao += d.comissao || 0
       }
       return res.status(200).json({
