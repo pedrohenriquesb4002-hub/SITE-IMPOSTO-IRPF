@@ -70,7 +70,6 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
     }))
     .filter(c => c.total > 0)
     .sort((a, b) => b.total - a.total)
-    .slice(0, 5)
   const maxRankTotal = Math.max(...rankedColaboradores.map(c => c.total), 1)
 
   return (
@@ -298,7 +297,7 @@ export default function DashboardPage({ onNavigate }: DashboardPageProps) {
             {rankedColaboradores.length === 0 ? (
               <p className="text-muted-foreground text-sm text-center py-8">Sem dados ainda</p>
             ) : (
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 max-h-[420px] overflow-y-auto pr-1">
                 {rankedColaboradores.map((col, i) => {
                   const photo = getColabPhoto(col.name)
                   return (
