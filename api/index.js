@@ -425,6 +425,80 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════════════
+    // AUTH — ESQUECI MINHA SENHA (envia link por e-mail)
+    // ══════════════════════════════════════════════════════════
+    if (url === '/auth/forgot-password' && req.method === 'POST') {
+      const { email } = req.body || {}
+      const generic = { message: 'Se esse e-mail estiver cadastrado, você vai receber um link de redefinição em alguns minutos.' }
+
+      if (!email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return res.status(200).json(generic) // não revela se o e-mail é válido/existe
+      }
+
+      try {
+        await checkRateLimit(sql, `forgot:${ip}`, 'forgot_password', 4, 30)
+      } catch {
+        return res.status(200).json(generic) // não revela rate limit pro atacante
+      }
+
+      const [user] = await sql`SELECT id, username, name, "displayName", email FROM users WHERE email = ${email.trim().toLowerCase()} LIMIT 1`
+      if (user) {
+        const token = Array.from(crypto.getRandomValues(new Uint8Array(32)))
+          .map(b => b.toString(16).padStart(2, '0')).join('')
+        const expiresAt = new Date(Date.now() + 60 * 60 * 1000) // 1h
+        await sql`INSERT INTO "passwordResets" ("userId", token, "expiresAt") VALUES (${user.id}, ${token}, ${expiresAt})`
+
+        const appUrl = process.env.NEXT_PUBLIC_APP_URL || `https://${process.env.VERCEL_URL}` || 'https://seusite.vercel.app'
+        const resetUrl = `${appUrl}/reset-password?token=${token}`
+
+        await sendEmail({
+          to: user.email,
+          subject: '🔑 Redefinição de senha — Sistema IRPF/ITR',
+          html: `
+            <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;background:#f8f9fa;padding:20px;border-radius:12px;">
+              <div style="background:linear-gradient(135deg,#1e3a5f,#2563eb);padding:24px;border-radius:8px;text-align:center;margin-bottom:20px;">
+                <h1 style="color:white;margin:0;font-size:20px;">🔑 Redefinir senha</h1>
+              </div>
+              <div style="background:white;padding:20px;border-radius:8px;border:1px solid #e2e8f0;">
+                <p>Olá <strong>${user.displayName || user.name}</strong>,</p>
+                <p>Recebemos um pedido para redefinir a senha da sua conta (@${user.username}) no Sistema IRPF/ITR.</p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="${resetUrl}" style="background:#2563eb;color:white;padding:14px 32px;border-radius:8px;text-decoration:none;font-weight:700;">
+                    Criar nova senha
+                  </a>
+                </div>
+                <p style="color:#64748b;font-size:13px;">Este link expira em <strong>1 hora</strong>. Se você não pediu essa redefinição, pode ignorar este e-mail.</p>
+              </div>
+            </div>
+          `
+        })
+        await audit(sql, user.id, 'password_reset_requested', req)
+      }
+
+      return res.status(200).json(generic)
+    }
+
+    // ══════════════════════════════════════════════════════════
+    // AUTH — REDEFINIR SENHA (via token do e-mail)
+    // ══════════════════════════════════════════════════════════
+    if (url === '/auth/reset-password' && req.method === 'POST') {
+      const { token, newPassword } = req.body || {}
+      if (!token || !newPassword) return res.status(400).json({ error: 'Dados incompletos' })
+      if (newPassword.length < 8) return res.status(400).json({ error: 'Nova senha deve ter no mínimo 8 caracteres' })
+
+      const [reset] = await sql`SELECT * FROM "passwordResets" WHERE token = ${token} AND used = FALSE LIMIT 1`
+      if (!reset) return res.status(400).json({ error: 'Link inválido ou já utilizado' })
+      if (new Date(reset.expiresAt) < new Date()) return res.status(400).json({ error: 'Link expirado. Solicite um novo.' })
+
+      const newHash = await bcrypt.hash(newPassword, 12)
+      await sql`UPDATE users SET password_hash = ${newHash}, "updatedAt" = NOW() WHERE id = ${reset.userId}`
+      await sql`UPDATE "passwordResets" SET used = TRUE WHERE id = ${reset.id}`
+      await audit(sql, reset.userId, 'password_reset_completed', req)
+
+      return res.status(200).json({ message: 'Senha redefinida com sucesso! Você já pode fazer login.' })
+    }
+
+    // ══════════════════════════════════════════════════════════
     // AUTH — ME (dados do usuário logado)
     // ══════════════════════════════════════════════════════════
     if (url === '/auth/me' && req.method === 'GET') {

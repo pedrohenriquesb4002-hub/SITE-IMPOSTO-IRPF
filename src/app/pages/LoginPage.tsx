@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Lock, User, Eye, EyeOff, AlertCircle, Mail, CheckCircle, ArrowLeft, ShieldCheck } from 'lucide-react'
 import { api, useAuthStore } from '../../lib/store'
 
-type View = 'login' | 'register' | 'pending'
+type View = 'login' | 'register' | 'pending' | 'forgot' | 'forgot-sent'
 
 export default function LoginPage() {
   const navigate = useNavigate()
@@ -26,6 +26,11 @@ export default function LoginPage() {
   const [showRegPass, setShowRegPass] = useState(false)
   const [loadingReg, setLoadingReg] = useState(false)
   const [errorReg, setErrorReg] = useState('')
+
+  // Esqueci a senha
+  const [forgotEmail, setForgotEmail] = useState('')
+  const [loadingForgot, setLoadingForgot] = useState(false)
+  const [errorForgot, setErrorForgot] = useState('')
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -75,6 +80,21 @@ export default function LoginPage() {
     } catch (err: unknown) {
       setErrorReg(err instanceof Error ? err.message : 'Erro ao enviar solicitação.')
     } finally { setLoadingReg(false) }
+  }
+
+  const handleForgot = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setErrorForgot('')
+    if (!forgotEmail.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(forgotEmail.trim())) {
+      setErrorForgot('Digite um e-mail válido.'); return
+    }
+    setLoadingForgot(true)
+    try {
+      await api.forgotPassword(forgotEmail.trim())
+      setView('forgot-sent')
+    } catch (err: unknown) {
+      setErrorForgot(err instanceof Error ? err.message : 'Erro ao enviar solicitação.')
+    } finally { setLoadingForgot(false) }
   }
 
   return (
@@ -129,6 +149,12 @@ export default function LoginPage() {
                   <button type="button" onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white/80 transition-colors">
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <div className="flex justify-end mt-1.5">
+                  <button type="button" onClick={() => { setView('forgot'); setErrorForgot(''); setForgotEmail('') }}
+                    className="text-xs text-sidebar-foreground/60 hover:text-white transition-colors">
+                    Esqueceu a senha?
                   </button>
                 </div>
               </div>
@@ -303,6 +329,73 @@ export default function LoginPage() {
             </div>
 
             <button onClick={() => { setView('login'); setRegName(''); setRegEmail(''); setRegUsername(''); setRegPassword(''); setRegPassword2('') }}
+              className="w-full py-2.5 border border-white/30 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all text-sm font-medium">
+              Voltar para o Login
+            </button>
+          </div>
+        )}
+
+        {/* ─── VIEW: ESQUECI A SENHA ─── */}
+        {view === 'forgot' && (
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 shadow-2xl">
+            <button onClick={() => { setView('login'); setErrorForgot('') }}
+              className="flex items-center gap-1.5 text-white/60 hover:text-white text-sm mb-5 transition-colors">
+              <ArrowLeft className="w-4 h-4" /> Voltar para login
+            </button>
+
+            <h2 className="text-xl font-bold text-white mb-1">Esqueceu a senha?</h2>
+            <p className="text-white/50 text-xs mb-6">
+              Digite o e-mail cadastrado na sua conta. Vamos te enviar um link pra criar uma nova senha.
+            </p>
+
+            {errorForgot && (
+              <div className="flex items-center gap-2 bg-destructive/20 border border-destructive/40 text-white rounded-lg px-4 py-3 mb-4 text-sm">
+                <AlertCircle className="w-4 h-4 flex-shrink-0" />
+                <span>{errorForgot}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleForgot} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-sidebar-foreground/90 mb-1.5">E-mail cadastrado</label>
+                <div className="relative">
+                  <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-sidebar-foreground/50" />
+                  <input type="email" autoComplete="email" value={forgotEmail}
+                    onChange={(e) => setForgotEmail(e.target.value)}
+                    placeholder="seu@email.com"
+                    className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-xl text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-sidebar-primary focus:border-transparent transition-all text-sm" />
+                </div>
+              </div>
+
+              <button type="submit" disabled={loadingForgot}
+                className="w-full py-3 bg-sidebar-primary hover:bg-sidebar-primary/90 text-white font-semibold rounded-xl transition-all shadow-lg shadow-sidebar-primary/30 disabled:opacity-50 disabled:cursor-not-allowed mt-2">
+                {loadingForgot ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                    Enviando...
+                  </span>
+                ) : 'Enviar link de redefinição'}
+              </button>
+            </form>
+          </div>
+        )}
+
+        {/* ─── VIEW: LINK ENVIADO ─── */}
+        {view === 'forgot-sent' && (
+          <div className="bg-white/10 backdrop-blur-xl border border-white/20 rounded-2xl p-8 shadow-2xl text-center">
+            <div className="w-20 h-20 bg-success/20 border-2 border-success/40 rounded-full flex items-center justify-center mx-auto mb-6">
+              <Mail className="w-10 h-10 text-success" />
+            </div>
+            <h2 className="text-xl font-bold text-white mb-3">Verifique seu e-mail</h2>
+            <p className="text-white/60 text-sm leading-relaxed mb-6">
+              Se <strong className="text-white/80">{forgotEmail}</strong> estiver cadastrado no sistema, você vai
+              receber um e-mail com um link para criar uma nova senha. O link expira em <strong className="text-white/80">1 hora</strong>.
+            </p>
+
+            <button onClick={() => { setView('login'); setForgotEmail('') }}
               className="w-full py-2.5 border border-white/30 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-all text-sm font-medium">
               Voltar para o Login
             </button>

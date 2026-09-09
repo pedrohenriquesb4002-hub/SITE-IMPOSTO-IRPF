@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { FileText, DollarSign, Receipt, Upload, Settings, Moon, Sun, ChevronLeft, ChevronRight, Calendar, User, LogOut, Users, BarChart2, Tag } from 'lucide-react'
 import { Toaster } from 'sonner'
 import LoginPage from './pages/LoginPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import IRPFPage from './components/IRPFPage'
 import ITRPage from './components/ITRPage'
 import ComissoesPage from './components/ComissoesPage'
@@ -228,6 +229,7 @@ export default function App() {
       <Toaster richColors position="top-right" />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/*" element={
           <ProtectedRoute>
             <Dashboard />

@@ -138,6 +138,18 @@ ALTER TABLE quotas ADD COLUMN IF NOT EXISTS categoria VARCHAR(10) NOT NULL DEFAU
 -- (lançamentos antigos passam a valer 1 propriedade por padrão)
 ALTER TABLE "itrDeclarations" ADD COLUMN IF NOT EXISTS "quantidadeFazendas" INTEGER NOT NULL DEFAULT 1;
 
+-- Tabela nova (não altera nenhuma tabela existente) para o link de
+-- "Esqueci minha senha" enviado por e-mail
+CREATE TABLE IF NOT EXISTS "passwordResets" (
+  id SERIAL PRIMARY KEY,
+  "userId" INTEGER NOT NULL REFERENCES users(id),
+  token VARCHAR(64) NOT NULL UNIQUE,
+  "expiresAt" TIMESTAMP NOT NULL,
+  used BOOLEAN NOT NULL DEFAULT FALSE,
+  "createdAt" TIMESTAMP DEFAULT NOW() NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON "passwordResets"(token);
+
 -- Sessions (para autenticação JWT não precisamos, mas guardamos refresh info)
 -- Insira o primeiro usuário admin depois de rodar o sistema:
 -- O hash abaixo é bcrypt de 'admin123' - TROQUE A SENHA DEPOIS!
